@@ -4,7 +4,7 @@ import { getSchedule } from "@/lib/schedule";
 const globalDb = globalThis as typeof globalThis & { commandPool?: Pool; commandDbReady?: Promise<void> };
 
 export function db() {
-  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required (use the Neon pooled PostgreSQL URL).");
+  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required (use the Supabase transaction pooler URL).");
   if (!globalDb.commandPool) {
     globalDb.commandPool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 3, idleTimeoutMillis: 10_000, connectionTimeoutMillis: 10_000 });
   }
