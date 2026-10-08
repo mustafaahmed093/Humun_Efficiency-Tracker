@@ -4,9 +4,9 @@ Command Center is a private, mobile-first tracker for Mustafa’s 15-day plan (7
 
 ## Run locally
 
-Requirements: Node.js 24 or newer and npm. The app uses a Supabase PostgreSQL database; the old local SQLite database can be exported for one-time import.
+Requirements: Node.js 24 or newer and npm. The app uses a Neon PostgreSQL database; the old local SQLite database can be exported for one-time import.
 
-1. Copy `.env.example` to `.env.local`, create a Supabase project, and paste its **Transaction pooler** URL into `DATABASE_URL`.
+1. Copy `.env.example` to `.env.local`, create a Neon project, and paste its **Pooled connection** URL into `DATABASE_URL`.
 2. Set a unique `APP_PASSWORD` (16+ characters) and random `SESSION_SECRET` (32+ characters).
 3. From this folder run:
 
@@ -17,7 +17,7 @@ Requirements: Node.js 24 or newer and npm. The app uses a Supabase PostgreSQL da
 
 4. Open [http://localhost:3000](http://localhost:3000) and enter the password.
 
-The app creates its PostgreSQL tables and seeds the schedule on first use. The Vercel server only needs the Supabase transaction pooler URL. Keep credentials server-side; do not use a public/anon key as `DATABASE_URL`.
+The app creates its PostgreSQL tables and seeds the schedule on first use. Use Neon’s pooled URL (with `-pooler` in the host) for Vercel. Keep the database URL server-side; never expose it through a `NEXT_PUBLIC_` variable.
 
 ## Features
 
@@ -29,11 +29,11 @@ The app creates its PostgreSQL tables and seeds the schedule on first use. The V
 - PWA manifest, icon, service worker, and offline fallback page. In a secure origin the browser can install the app. The service worker does not cache authenticated pages or API responses.
 - Up to 14 daily JSON snapshots stored in PostgreSQL. They refresh on data writes and when “Save backup now” is used. “Delete all my data” writes a final snapshot before clearing tracker records.
 
-Snapshots share the same Supabase database as tracker data, so they do not protect against loss of that project. Download a JSON export regularly and keep it somewhere private. Supabase Free does not provide downloadable database backups.
+Snapshots share the same Neon database as tracker data, so they do not protect against loss of that project. Download a JSON export regularly and keep it somewhere private.
 
 ## Security and deployment status
 
-This is a single-user app protected by an environment password, signed HTTP-only sessions, persistent login throttling, and PostgreSQL row-level security. It is structured for Vercel + Supabase; you still need to create those accounts, set their environment variables, and complete the first deployment. Push notifications while the app is closed and off-site automated backups are not implemented. See [DEPLOYMENT.md](./DEPLOYMENT.md) for setup and free-tier limitations.
+This is a single-user app protected by an environment password, signed HTTP-only sessions, and database-backed login throttling. It is structured for Vercel + Neon; you still need to create those accounts, set their environment variables, and complete the first deployment. Push notifications while the app is closed and off-site automated backups are not implemented. See [DEPLOYMENT.md](./DEPLOYMENT.md) for setup and free-tier limits.
 
 The safety answer is stored as a numeric count and omitted from dashboard responses. Export and report controls require the local unlock. Verify the Umang support number before any release.
 

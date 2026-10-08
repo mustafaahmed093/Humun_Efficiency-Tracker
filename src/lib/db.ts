@@ -4,7 +4,7 @@ import { getSchedule } from "@/lib/schedule";
 const globalDb = globalThis as typeof globalThis & { commandPool?: Pool; commandDbReady?: Promise<void> };
 
 export function db() {
-  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required (use the Supabase transaction pooler URL).");
+  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required (use the Neon pooled PostgreSQL URL).");
   if (!globalDb.commandPool) {
     globalDb.commandPool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 3, idleTimeoutMillis: 10_000, connectionTimeoutMillis: 10_000 });
   }
@@ -32,7 +32,7 @@ export async function ready() {
         ALTER TABLE daily_scores ENABLE ROW LEVEL SECURITY;
         ALTER TABLE backup_snapshots ENABLE ROW LEVEL SECURITY;
         ALTER TABLE login_attempts ENABLE ROW LEVEL SECURITY;
-        REVOKE ALL ON schedule_blocks, block_logs, settings, nightly_reviews, daily_scores, backup_snapshots, login_attempts FROM anon, authenticated;`);
+      `);
       const blocks = [];
       for (let n = 0; n < 15; n++) {
         const day = new Date(Date.UTC(2026, 9, 7 + n)).toISOString().slice(0, 10);
