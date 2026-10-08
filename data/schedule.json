@@ -1,0 +1,30 @@
+{
+  "timezone": "Asia/Karachi",
+  "planStart": "2026-10-07",
+  "planEnd": "2026-10-21",
+  "categories": {
+    "Religious": "#4e9b76", "Business": "#5683dc", "Startup": "#8170d8", "Health": "#df9854",
+    "Uni": "#40a2a0", "Family": "#d77a9b", "Rest": "#8792a6", "Review": "#d19a43"
+  },
+  "typeA": [
+    ["04:30","05:11","Bath","Health"], ["05:11","06:00","Fajr: Namaz + Surah Yaseen","Religious","Fajr"],
+    ["06:00","06:30","Meditation / Walk","Health"], ["07:00","09:00","Startup work: Research, Develop, Marketing","Startup"],
+    ["09:00","09:30","Break","Rest"], ["09:30","11:00","Lead scrape from LinkedIn","Business"],
+    ["11:00","12:00","Nashta + time with Baba","Family"], ["12:00","13:00","Lead scrape + Japan car work (side hustle)","Business"],
+    ["13:00","14:00","Zohr namaz","Religious","Zohr"], ["14:00","15:00","Khana + YouTube","Rest"],
+    ["15:00","16:30","Sleep","Rest"], ["16:30","17:00","Asr namaz","Religious","Asr"],
+    ["17:00","17:30","Exercise","Health"], ["17:30","19:30","Medspa agency outreach (+ Maghrib with a 10 min break)","Business","Maghrib"],
+    ["19:30","21:00","LinkedIn outreach","Business"], ["21:00","22:00","Mujtaba (brother) + YouTube + Badminton","Family"],
+    ["22:00","24:00","Baba + Badminton + Family","Family"], ["24:00","25:00","Dr Nauman Ali Khan lecture","Religious","Isha"],
+    ["24:30","24:45","Nightly analysis (time-locked review)","Review"], ["25:00","28:30","Sleep","Rest"]
+  ],
+  "evening": [
+    ["17:30","19:30","Medspa agency outreach (+ Maghrib with a 10 min break)","Business","Maghrib"],
+    ["19:30","21:00","LinkedIn outreach","Business"], ["21:00","22:00","Mujtaba (brother) + YouTube + Badminton","Family"],
+    ["22:00","24:00","Baba + Badminton + Family","Family"], ["24:00","25:00","Dr Nauman Ali Khan lecture","Religious","Isha"],
+    ["24:30","24:45","Nightly analysis (time-locked review)","Review"], ["25:00","28:30","Sleep","Rest"]
+  ],
+  "tuesday": [["09:00","10:00","Bath + Nashta","Health"],["10:00","10:30","Uni","Uni"],["10:30","11:30","LinkedIn lead scrape","Business"],["11:30","16:00","Uni (classes about 11:30 to 15:30)","Uni"],["16:00","17:30","Rest / Sleep + Namaz","Rest"]],
+  "thursday": [["06:30","07:30","Nashta + get ready for uni","Health"],["07:30","08:30","Uni","Uni"],["08:30","16:30","Uni","Uni"],["16:30","17:30","Sleep","Rest"]],
+  "saturday": [["06:30","07:30","Nashta + get ready for uni","Health"],["07:30","08:30","Uni","Uni"],["08:30","16:30","Uni study + Namaz","Uni"],["16:30","17:30","Sleep","Rest"]]
+}
