@@ -1,7 +1,7 @@
 {
   "timezone": "Asia/Karachi",
-  "planStart": "2026-10-07",
-  "planEnd": "2026-10-21",
+  "planStart": "2026-10-09",
+  "planEnd": "2026-10-23",
   "categories": {
     "Religious": "#4e9b76", "Business": "#5683dc", "Startup": "#8170d8", "Health": "#df9854",
     "Uni": "#40a2a0", "Family": "#d77a9b", "Rest": "#8792a6", "Review": "#d19a43"

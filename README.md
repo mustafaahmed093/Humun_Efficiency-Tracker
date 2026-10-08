@@ -1,13 +1,13 @@
 # Command Center
 
-Command Center is a private, mobile-first tracker for Mustafa’s 15-day plan (7–21 October 2026, Asia/Karachi). It includes the daily schedule, time-locked nightly review, score dashboard, progress graphs, day-by-day plan, reports, Excel/JSON/calendar export, JSON import, development tools, installable PWA shell, offline check-in queue, and database snapshots.
+Command Center is a private, mobile-first tracker for Mustafa’s 15-day plan (9–23 October 2026, Asia/Karachi). It includes the daily schedule, time-locked nightly review, score dashboard, progress graphs, day-by-day plan, reports, Excel/JSON/calendar export, JSON import, development tools, installable PWA shell, offline check-in queue, and database snapshots.
 
 ## Run locally
 
 Requirements: Node.js 24 or newer and npm. The app uses a Supabase PostgreSQL database; the old local SQLite database can be exported for one-time import.
 
 1. Copy `.env.example` to `.env.local`, create a Supabase project, and paste its **Transaction pooler** connection URL into `DATABASE_URL`.
-2. Set a unique `APP_PASSWORD` (16+ characters) and random `SESSION_SECRET` (32+ characters).
+2. Set a private 4-digit `APP_PASSWORD` and random `SESSION_SECRET` (32+ characters).
 3. From this folder run:
 
    ```sh

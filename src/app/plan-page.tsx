@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { formatDay } from "@/lib/schedule";
+import { formatDay, getPlanDays, planEnd, planStart } from "@/lib/schedule";
 
 type DayEntry = { plan_day: string; done: number; logged: number; scheduled: number; completion_pct: number };
 type Review = { plan_day: string; answers: Record<string, unknown>; safety_count?: number; submitted_at: string | null; late_entry: boolean };
@@ -12,7 +12,7 @@ type DevState = { enabled: boolean; simulatedNow: string | null };
 const scoreKeys = ["business", "health", "mental", "focus", "religious", "overall"] as const;
 const scoreLabels: Record<string, string> = { business: "Business", health: "Health", mental: "Mental", focus: "Focus", religious: "Religious", overall: "Overall" };
 const sensitiveKeys = new Set(["mood", "stress", "stressNote", "tension", "happiness", "overthinkingCount", "focusRating"]);
-const fullDays = Array.from({ length: 15 }, (_, index) => new Date(Date.UTC(2026, 9, 7 + index)).toISOString().slice(0, 10));
+const fullDays = getPlanDays();
 function localInputValue(iso: string) {
   const date = new Date(iso);
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
@@ -62,7 +62,7 @@ export default function PlanPage({ onNavigate, onDaySelect }: { onNavigate: (tab
   async function download(format: string, include = false) {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/export?format=${format}&from=2026-10-07&to=2026-10-21${include ? "&includeSensitive=1" : ""}`, { cache: "no-store" });
+      const response = await fetch(`/api/export?format=${format}&from=${planStart}&to=${planEnd}${include ? "&includeSensitive=1" : ""}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Export nahi bana. Dobara try karo.");
       const blob = await response.blob(); const href = URL.createObjectURL(blob); const link = document.createElement("a");
       link.href = href; link.download = format === "ics" ? "command-center-15-day-plan.ics" : format === "json" ? "command-center-full-export.json" : `command-center-${currentRange.from}-to-${currentRange.to}.xlsx`;
@@ -158,7 +158,7 @@ export default function PlanPage({ onNavigate, onDaySelect }: { onNavigate: (tab
   }
 
   const scoreMap = new Map(data?.dailyScores.map(score => [score.plan_day, score]) ?? []);
-  return <PlanFrame nav={nav} onNavigate={onNavigate}><div className="plan-content"><div className="plan-heading"><div><p className="eyebrow">THE WHOLE JOURNEY · 7–21 OCT 2026</p><h1>15 din. Tumhara safar.</h1><p>Har din ek naya mauqa hai, peeche mud kar apni progress dekho.</p></div><div className="plan-count"><b>{data?.completion.filter(day => day.logged).length ?? 0}</b><span>days with logs</span></div></div>
+  return <PlanFrame nav={nav} onNavigate={onNavigate}><div className="plan-content"><div className="plan-heading"><div><p className="eyebrow">THE WHOLE JOURNEY · {formatDay(planStart)}–{formatDay(planEnd)} {planEnd.slice(0, 4)}</p><h1>15 din. Tumhara safar.</h1><p>Har din ek naya mauqa hai, peeche mud kar apni progress dekho.</p></div><div className="plan-count"><b>{data?.completion.filter(day => day.logged).length ?? 0}</b><span>days with logs</span></div></div>
     <section className="day-grid-card"><div className="grid-card-heading"><div><p className="eyebrow">YOUR PLAN AT A GLANCE</p><h2>Day-by-day progress</h2></div><span>DAY 01 — 15</span></div><div className="fifteen-day-grid">{fullDays.map((day,index)=>{ const entry=completionMap.get(day);const review=reviewMap.get(day);const performance=completionColor(entry?.completion_pct??0,entry?.logged??0);const future=day>today;const score=scoreMap.get(day)?.overall; return <button key={day} className={`plan-day-tile ${performance} ${future?"future":""}`} onClick={()=>{onDaySelect(day);onNavigate("Aaj");}}><span className="tile-day">DAY {String(index+1).padStart(2,"0")}</span><b>{day.split("-")[2]}</b><small>{formatDay(day).split(" ")[1]}</small><strong>{entry?.logged?`${entry.completion_pct}%`:future?"Soon":"—"}</strong><i className={review?.submitted_at?"review-check done":"review-check"}>{review?.submitted_at?"✓":"·"}</i>{score!==undefined&&<em>{score} overall</em>}</button>;})}</div><div className="performance-legend"><span><i className="high"/>80%+ Strong</span><span><i className="medium"/>50–79% Steady</span><span><i className="low"/>&lt;50% Needs care</span><span><i className="empty"/>No logs</span></div></section>
     <section className="exports-card"><div className="grid-card-heading"><div><p className="eyebrow">YOUR DATA, YOURS TO KEEP</p><h2>Export & reports</h2></div><span>Private · authenticated</span></div><div className="export-actions"><button onClick={()=>void download("xlsx")} disabled={busy}><span>▤</span><b>Export Excel</b><small>6 sheets · .xlsx</small><i>↓</i></button><button onClick={()=>void download("ics")} disabled={busy}><span>▦</span><b>Export Calendar</b><small>15-day schedule · .ics</small><i>↓</i></button><button onClick={()=>void download("json",true)} disabled={busy}><span>{"{}"}</span><b>Export JSON</b><small>Full data backup</small><i>↓</i></button><button onClick={()=>fileRef.current?.click()} disabled={busy}><span>↑</span><b>Import JSON</b><small>Merge a local backup</small><i>↑</i></button><input ref={fileRef} hidden type="file" accept="application/json,.json" onChange={event=>void importFile(event)}/></div>
       <div className="claude-report"><div><p className="eyebrow">COPY A CLEAN SUMMARY</p><h3>Export for Claude</h3><p>Daily progress, scores, goals, missed blocks, and review answers.</p></div><div className="report-controls"><button className={reportDays===3?"active":""} onClick={()=>setReportDays(3)}>3 days</button><button className={reportDays===7?"active":""} onClick={()=>setReportDays(7)}>7 days</button><button className={reportDays===15?"active":""} onClick={()=>setReportDays(15)}>Full plan</button><label><input type="checkbox" checked={includeSensitive} onChange={event=>setIncludeSensitive(event.target.checked)}/> Include safety count & mental-health fields</label><button className="copy-report-button" onClick={()=>void copyReport()} disabled={!data}>Copy summary <span>⧉</span></button></div></div>

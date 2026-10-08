@@ -12,7 +12,7 @@ function validDay(day: string) { return /^\d{4}-\d{2}-\d{2}$/.test(day) && day >
 
 export async function GET(request: NextRequest) {
   if (!isUnlocked(request)) return NextResponse.json({ error: "Unlock the local app first." }, { status: 401 });
-  const day = request.nextUrl.searchParams.get("date") ?? "2026-10-07";
+  const day = request.nextUrl.searchParams.get("date") ?? planStart;
   if (!validDay(day)) return NextResponse.json({ error: "Day is outside the 15-day plan." }, { status: 400 });
   const stored = (await query("SELECT block_id as id, plan_day as day, status, reason, updated_at as \"updatedAt\" FROM block_logs WHERE plan_day=$1", [day])).rows;
   const blocks = (await query("SELECT id, start_time as start, end_time as end, name, category, prayer FROM schedule_blocks WHERE plan_day=$1 ORDER BY start_time", [day])).rows;

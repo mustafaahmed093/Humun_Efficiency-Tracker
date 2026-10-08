@@ -1,5 +1,5 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
-import { getSchedule } from "@/lib/schedule";
+import { getPlanDays, getSchedule } from "@/lib/schedule";
 
 const globalDb = globalThis as typeof globalThis & { commandPool?: Pool; commandDbReady?: Promise<void> };
 
@@ -34,8 +34,7 @@ export async function ready() {
         ALTER TABLE login_attempts ENABLE ROW LEVEL SECURITY;
       `);
       const blocks = [];
-      for (let n = 0; n < 15; n++) {
-        const day = new Date(Date.UTC(2026, 9, 7 + n)).toISOString().slice(0, 10);
+      for (const day of getPlanDays()) {
         blocks.push(...getSchedule(day).map(block => ({ ...block, day })));
       }
       await pool.query(`INSERT INTO schedule_blocks (id,plan_day,start_time,end_time,name,category,prayer)

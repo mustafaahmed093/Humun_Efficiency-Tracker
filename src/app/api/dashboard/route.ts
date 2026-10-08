@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { getSchedule, planEnd, planStart } from "@/lib/schedule";
+import { getPlanDays, getSchedule, planEnd, planStart } from "@/lib/schedule";
 import { planDayForDate } from "@/lib/schedule";
 import { effectiveServerNow } from "@/lib/server-time";
 import { isUnlocked } from "@/lib/auth";
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   const scoresByDay = new Map(scoreRows.map(row => [row.plan_day, JSON.parse(row.scores_json) as Record<string, number>]));
   const reviews = (await query<ReviewRow>("SELECT plan_day,answers_json FROM nightly_reviews WHERE submitted_at IS NOT NULL AND plan_day<=$1 ORDER BY plan_day", [today])).rows;
   const reviewsByDay = new Map(reviews.map(row => [row.plan_day, JSON.parse(row.answers_json) as Record<string, unknown>]));
-  const days = Array.from({ length: 15 }, (_, i) => new Date(Date.UTC(2026, 9, 7 + i)).toISOString().slice(0, 10));
+  const days = getPlanDays();
   const completionByDay = new Map<string, number>();
   for (const day of days) {
     const blocks = getSchedule(day).filter(block => block.category !== "Review");

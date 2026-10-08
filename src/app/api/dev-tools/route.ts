@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query, transaction } from "@/lib/db";
-import { getSchedule } from "@/lib/schedule";
+import { getPlanDays, getSchedule } from "@/lib/schedule";
 import { calculateScores } from "@/lib/scoring";
 import { devToolsEnabled, setSimulatedNow } from "@/lib/server-time";
 import { isUnlocked } from "@/lib/auth";
@@ -25,7 +25,7 @@ async function makeDemoData() {
   const reviewInsert = "INSERT INTO nightly_reviews (plan_day,answers_json,safety_count,draft_updated_at,submitted_at,late_entry,is_demo) VALUES ($1,$2,0,$3,$4,0,1) ON CONFLICT(plan_day) DO NOTHING";
   const scoreInsert = "INSERT INTO daily_scores (plan_day,scores_json,created_at,is_demo) VALUES ($1,$2,$3,1) ON CONFLICT(plan_day) DO NOTHING";
   for (let dayIndex = 0; dayIndex < 15; dayIndex++) {
-    const day = new Date(Date.UTC(2026, 9, 7 + dayIndex)).toISOString().slice(0, 10);
+    const day = getPlanDays()[dayIndex];
     const schedule = getSchedule(day).filter(block => block.category !== "Review");
     for (let index = 0; index < schedule.length; index++) {
       const block = schedule[index];

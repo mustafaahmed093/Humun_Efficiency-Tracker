@@ -40,7 +40,7 @@ export function setSessionCookie(response: NextResponse, token = createSession()
 
 export function passwordMatches(candidate: string) {
   const configured = process.env.APP_PASSWORD;
-  if (!configured || configured.length < 16) throw new Error("APP_PASSWORD must be at least 16 characters.");
+  if (!configured || !/^\d{4}$/.test(configured)) throw new Error("APP_PASSWORD must be a 4-digit PIN.");
   const candidateHash = createHmac("sha256", secret()).update(candidate).digest();
   const configuredHash = createHmac("sha256", secret()).update(configured).digest();
   return timingSafeEqual(candidateHash, configuredHash);

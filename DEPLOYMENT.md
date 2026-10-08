@@ -21,7 +21,7 @@ The transaction pooler is intended for serverless functions. Supabase's connecti
 | Name | Value |
 | --- | --- |
 | `DATABASE_URL` | The Supabase Transaction pooler connection string from step 1. |
-| `APP_PASSWORD` | A unique password with at least 16 characters. |
+| `APP_PASSWORD` | Your 4-digit tracker PIN. |
 | `SESSION_SECRET` | Generate a random value with the PowerShell command below. |
 
 ```powershell

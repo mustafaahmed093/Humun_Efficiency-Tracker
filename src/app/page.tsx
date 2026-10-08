@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { categories, formatDay, getSchedule, planDayForDate, weekdayName, type ScheduleBlock } from "@/lib/schedule";
+import { categories, formatDay, getPlanDays, getSchedule, planDayForDate, planEnd, planStart, weekdayName, type ScheduleBlock } from "@/lib/schedule";
 import DashboardPage from "@/app/dashboard-page";
 import ReviewPage from "@/app/review-page";
 import GraphsPage from "@/app/graphs-page";
@@ -10,12 +10,10 @@ import PlanPage from "@/app/plan-page";
 type Log = { id: string; day: string; status: "done" | "missed"; reason: string | null };
 const reasons = ["Overthinking", "Neend / Thakan", "Phone / Distraction", "Dusra zaroori kaam", "Family", "Tabiyat", "Lazy feel hua", "Other"];
 const prayers = ["Fajr", "Zohr", "Asr", "Maghrib", "Isha"];
-const planDays = Array.from({ length: 15 }, (_, i) => new Date(Date.UTC(2026, 9, 7 + i)).toISOString().slice(0, 10));
+const planDays = getPlanDays();
 
 function pakistanToday() {
-  const local = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
-  if (local.getHours() < 4) local.setDate(local.getDate() - 1);
-  return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`;
+  return planDayForDate(new Date());
 }
 
 export default function Home() {
@@ -154,7 +152,7 @@ export default function Home() {
   const previous = () => setDay(planDays[Math.max(0, planDays.indexOf(day) - 1)]);
   const next = () => setDay(planDays[Math.min(14, planDays.indexOf(day) + 1)]);
 
-  if (!unlocked && pinOpen) return <main className="unlock-screen"><div className="unlock-card"><div className="brand-mark">✦</div><p className="eyebrow">MUSTAFA · PRIVATE SPACE</p><h1>Command<br /><em>Center.</em></h1><p className="muted">Apne aaj ko behtar banane ka ek chhota qadam.</p><label className="pin-label" htmlFor="pin">PASSWORD</label><input id="pin" className="pin-input" type="password" autoComplete="current-password" value={pin} onChange={e => setPin(e.target.value)} onKeyDown={e => e.key === "Enter" && void unlock()} placeholder="Password" autoFocus /><button className="primary-button unlock-button" onClick={() => void unlock()}>Unlock <span>→</span></button>{pinError && <p className="form-error">Password sahi nahi hai. Dobara try karo.</p>}<p className="small muted center">Private account · session expires after 12 hours</p></div></main>;
+  if (!unlocked && pinOpen) return <main className="unlock-screen"><div className="unlock-card"><div className="brand-mark">✦</div><p className="eyebrow">MUSTAFA · PRIVATE SPACE</p><h1>Command<br /><em>Center.</em></h1><p className="muted">Apne aaj ko behtar banane ka ek chhota qadam.</p><label className="pin-label" htmlFor="pin">4-DIGIT PIN</label><input id="pin" className="pin-input" type="password" inputMode="numeric" maxLength={4} autoComplete="current-password" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} onKeyDown={e => e.key === "Enter" && void unlock()} placeholder="••••" autoFocus /><button className="primary-button unlock-button" onClick={() => void unlock()}>Unlock <span>→</span></button>{pinError && <p className="form-error">PIN sahi nahi hai. Dobara try karo.</p>}<p className="small muted center">Private account · session expires after 12 hours</p></div></main>;
 
   if (tab === "Dashboard") return <DashboardPage day={today} onNavigate={setTab} />;
   if (tab === "Review") return <ReviewPage onNavigate={setTab} />;
@@ -166,12 +164,12 @@ export default function Home() {
   const timeLabel = (s: string) => s.replace(/^0/, "");
 
   return <main className="app-shell">
-      <aside className="sidebar"><div className="side-brand"><span>✦</span><div>command<span>center</span></div></div><div className="side-caption">YOUR 15-DAY RESET</div><div className="side-progress"><div className="progress-copy"><span>THE PLAN</span><b>{dayIndex > 0 ? `DAY ${dayIndex} / 15` : "15 DAYS"}</b></div><div className="progress-line"><i style={{ width: `${Math.max(0, dayIndex) / 15 * 100}%` }} /></div><div className="progress-dates">07 OCT <span>21 OCT 2026</span></div></div><nav className="side-nav">{nav.map((item, i) => <button key={item} className={`nav-item ${tab === item ? "active" : ""}`} onClick={() => setTab(item)}><span className="nav-icon">{["◫", "◷", "☾", "⌁", "▦"][i]}</span>{item}{tab === item && <i />}</button>)}</nav><div className="side-bottom"><div className="avatar">M</div><div><b>Mustafa</b><small>Karachi, PKT</small></div><button title="Lock" className="lock-button" onClick={() => { void fetch("/api/auth/unlock", { method: "DELETE" }); setUnlocked(false); setPinOpen(true); }}>↗</button></div></aside>
+      <aside className="sidebar"><div className="side-brand"><span>✦</span><div>command<span>center</span></div></div><div className="side-caption">YOUR 15-DAY RESET</div><div className="side-progress"><div className="progress-copy"><span>THE PLAN</span><b>{dayIndex > 0 ? `DAY ${dayIndex} / 15` : "15 DAYS"}</b></div><div className="progress-line"><i style={{ width: `${Math.max(0, dayIndex) / 15 * 100}%` }} /></div><div className="progress-dates">{formatDay(planStart).toUpperCase()} <span>{formatDay(planEnd).toUpperCase()} {planEnd.slice(0, 4)}</span></div></div><nav className="side-nav">{nav.map((item, i) => <button key={item} className={`nav-item ${tab === item ? "active" : ""}`} onClick={() => setTab(item)}><span className="nav-icon">{["◫", "◷", "☾", "⌁", "▦"][i]}</span>{item}{tab === item && <i />}</button>)}</nav><div className="side-bottom"><div className="avatar">M</div><div><b>Mustafa</b><small>Karachi, PKT</small></div><button title="Lock" className="lock-button" onClick={() => { void fetch("/api/auth/unlock", { method: "DELETE" }); setUnlocked(false); setPinOpen(true); }}>↗</button></div></aside>
     <section className="main-area">
       {offline && <div className="offline-banner">You’re offline — changes save on this device and will sync when you reconnect.</div>}
       <header className="topbar"><div className="mobile-brand">✦ <b>command<span>center</span></b></div><span className="breadcrumb">YOUR SPACE <b>/</b> {tab.toUpperCase()}</span><div className="top-actions"><span className="sync-indicator"><i />{sync}</span><button className="theme-button" aria-label="Theme">◐</button><div className="avatar small-avatar">M</div></div></header>
       <div className="content-wrap">
-        <div className="page-heading"><div><p className="eyebrow">{weekdayName(day).toUpperCase()}, {formatDay(day).toUpperCase()} 2026 <span className="live-pill"><i /> YOUR PLAN IS LIVE</span></p><h1>{tab === "Aaj" ? "Aaj ka din." : tab === "Dashboard" ? "Welcome back, Mustafa." : `${tab}.`}</h1><p className="subheading">Chhoti consistency. Bara farq.</p></div><button className="date-chip" onClick={() => { const idx = planDays.indexOf(day); if (idx >= 0) setDay(planDays[(idx + 1) % 15]); }}>◷ <span>{formatDay(day)}<small>{weekdayName(day)}</small></span><b>⌄</b></button></div>
+        <div className="page-heading"><div><p className="eyebrow">{weekdayName(day).toUpperCase()}, {formatDay(day).toUpperCase()} {day.slice(0, 4)} <span className="live-pill"><i /> YOUR PLAN IS LIVE</span></p><h1>{tab === "Aaj" ? "Aaj ka din." : tab === "Dashboard" ? "Welcome back, Mustafa." : `${tab}.`}</h1><p className="subheading">Chhoti consistency. Bara farq.</p></div><button className="date-chip" onClick={() => { const idx = planDays.indexOf(day); if (idx >= 0) setDay(planDays[(idx + 1) % 15]); }}>◷ <span>{formatDay(day)}<small>{weekdayName(day)}</small></span><b>⌄</b></button></div>
         <div className="day-switcher"><button onClick={previous} disabled={day === planDays[0]}>‹</button><span><b>{weekdayName(day)}</b> <i>·</i> {formatDay(day)} <span className="day-count">DAY {String(dayIndex).padStart(2, "0")} / 15</span></span><button onClick={next} disabled={day === planDays[14] || isFuture}>›</button><span className="completion-mini"><b>{completion}%</b> DONE</span></div>
         <div className="today-grid"><section className="timeline-panel"><div className="section-title"><div><p className="eyebrow">YOUR RHYTHM</p><h2>Aaj ka schedule</h2></div><span className="sync-text">{loading ? "Loading…" : `${blocks.length} blocks`}</span></div>
           <div className="prayer-strip"><div className="prayer-label"><span>✧</span><div><b>Namaz check-in</b><small>Roz ki paanch namazein</small></div></div>{prayers.map(name => { const linked = blocks.find(b => b.prayer === name); const state = linked ? statusLabel(linked) : undefined; return <button key={name} className={`prayer-chip ${state || ""}`} title={name} onClick={() => linked && !isFuture && (state === "done" ? void saveBlock(linked, "missed", "Not done") : setReasonFor(linked))}><span>{state === "done" ? "✓" : name[0]}</span><small>{name}</small></button>; })}</div>

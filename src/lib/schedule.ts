@@ -7,10 +7,16 @@ export const planStart = seed.planStart;
 export const planEnd = seed.planEnd;
 export const categories = seed.categories;
 
+export function getPlanDays(): string[] {
+  const [year, month, date] = planStart.split("-").map(Number);
+  return Array.from({ length: 15 }, (_, index) => new Date(Date.UTC(year, month - 1, date + index)).toISOString().slice(0, 10));
+}
+
 export function planDayForDate(date: Date): string {
   const local = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
   if (local.getHours() < 4) local.setDate(local.getDate() - 1);
-  return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`;
+  const day = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`;
+  return day < planStart ? planStart : day;
 }
 
 export function getSchedule(day: string): ScheduleBlock[] {

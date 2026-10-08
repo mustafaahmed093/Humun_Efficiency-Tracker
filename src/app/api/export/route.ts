@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { query } from "@/lib/db";
-import { getSchedule, planEnd, planStart } from "@/lib/schedule";
+import { getPlanDays, getSchedule, planEnd, planStart } from "@/lib/schedule";
 import { effectiveServerNow } from "@/lib/server-time";
 import { isUnlocked } from "@/lib/auth";
 
@@ -26,8 +26,7 @@ function eventDate(day: string, time: string) {
 function makeCalendar(now: Date) {
   const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
   const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Command Center//15 Day Plan//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "BEGIN:VTIMEZONE", "TZID:Asia/Karachi", "BEGIN:STANDARD", "DTSTART:19700101T000000", "TZOFFSETFROM:+0500", "TZOFFSETTO:+0500", "TZNAME:PKT", "END:STANDARD", "END:VTIMEZONE"];
-  for (let index = 0; index < 15; index++) {
-    const day = new Date(Date.UTC(2026, 9, 7 + index)).toISOString().slice(0, 10);
+  for (const day of getPlanDays()) {
     for (const block of getSchedule(day)) {
       lines.push("BEGIN:VEVENT", `UID:${block.id}@command-center.local`, `DTSTAMP:${stamp}`, `DTSTART;TZID=Asia/Karachi:${eventDate(day, block.start)}`, `DTEND;TZID=Asia/Karachi:${eventDate(day, block.end)}`, `SUMMARY:${escapeIcs(block.name)}`, `CATEGORIES:${escapeIcs(block.category)}`, "BEGIN:VALARM", "TRIGGER:PT0M", "ACTION:DISPLAY", `DESCRIPTION:${escapeIcs(block.name)}`, "END:VALARM", "END:VEVENT");
     }
@@ -37,7 +36,7 @@ function makeCalendar(now: Date) {
 }
 
 export async function collect(from: string, to: string, includeSensitive: boolean) {
-  const days = Array.from({ length: 15 }, (_, index) => new Date(Date.UTC(2026, 9, 7 + index)).toISOString().slice(0, 10)).filter(day => day >= from && day <= to);
+  const days = getPlanDays().filter(day => day >= from && day <= to);
   const logs = (await query<LogRow>("SELECT block_id,plan_day,status,reason,updated_at FROM block_logs WHERE plan_day BETWEEN $1 AND $2 ORDER BY plan_day,updated_at", [from, to])).rows;
   const logMap = new Map(logs.map(log => [log.block_id, log]));
   const scheduleLog = days.flatMap(day => getSchedule(day).map(block => {
