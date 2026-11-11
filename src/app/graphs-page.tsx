@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatDay } from "@/lib/schedule";
+import ComparePanel from "@/app/compare-panel";
 
 type ExportData = {
   days: string[];
@@ -59,7 +60,7 @@ export default function GraphsPage({ onNavigate }: { onNavigate: (tab: string) =
   const [selected, setSelected] = useState<string[]>(["business", "health", "mental", "focus", "religious", "overall"]);
   const [error, setError] = useState("");
   useEffect(() => { let active = true; void fetch("/api/export?includeSensitive=1", { cache: "no-store" }).then(async response => { if (!response.ok) throw new Error("Graphs load nahi ho sake."); return await response.json() as ExportData; }).then(result => { if (active) setData(result); }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : "Try again."); }); return () => { active = false; }; }, []);
-  const nav = ["Dashboard", "Aaj", "Review", "Graphs", "15 Din"];
+  const nav = ["Dashboard", "Aaj", "Review", "Goals", "Not To Do", "Plan a Day", "Past Status", "Graphs", "Search", "Reminders"];
   if (!data) return <GraphFrame nav={nav} onNavigate={onNavigate}><div className="graphs-loading">{error || "Graphs tayyar ho rahe hain…"}</div></GraphFrame>;
   const labels = data.days.map(day => formatDay(day).split(" ")[0]);
   const completion = data.completion.map(item => item.completion_pct);
@@ -88,6 +89,7 @@ export default function GraphsPage({ onNavigate }: { onNavigate: (tab: string) =
   data.crossedReasons.forEach(row => reasonCounts.set(row.reason || "Wajah nahi likhi", (reasonCounts.get(row.reason || "Wajah nahi likhi") ?? 0) + 1));
   const maxReason = Math.max(...reasonCounts.values(), 0);
   return <GraphFrame nav={nav} onNavigate={onNavigate}><div className="graphs-content"><div className="graphs-title"><div><p className="eyebrow">15 DIN KA SAFAR · VISUAL REPORT</p><h1>Apni growth dekho.</h1><p>Har data point, tumhari mehnat ki kahani.</p></div><button onClick={() => onNavigate("15 Din")}>15 Din dekho →</button></div>
+    <ComparePanel/>
     <div className="chart-grid"><ChartCard eyebrow="CONSISTENCY" title="Daily schedule completion" note="Completion %"><BarChart labels={labels} values={completion} color="#57956b" hasData={hasCheckins} /></ChartCard>
       <ChartCard eyebrow="SCORE TRENDS" title="Six scores over time"><div className="chart-toggles">{scoreKeys.map(key => <button key={key} className={selected.includes(key) ? "active" : ""} style={{ "--toggle-color": colors[key] } as React.CSSProperties} onClick={() => setSelected(current => current.includes(key) ? current.filter(v => v !== key) : [...current, key])}><i />{scoreLabels[key]}</button>)}</div><LineChart labels={labels} series={scoreSeries} suffix="" /></ChartCard>
       <ChartCard eyebrow="GOAL PACE" title="Cumulative leads vs targets" note="Dashed = target · dotted = pace"><LineChart labels={labels} hasData={data.reviews.some(row => row.answers.outboundLeads !== undefined || row.answers.medspaLeads !== undefined)} series={[{ name: "Outbound actual", color: colors.business, values: cumulativeOutbound }, { name: "Outbound target 300", color: colors.business, values: data.days.map(()=>300), dash: "target" }, { name: "Outbound pace", color: colors.business, values: targetPaceOutbound, dash: "pace" }, { name: "Medspa actual", color: colors.medspa, values: cumulativeMedspa }, { name: "Medspa target 560", color: colors.medspa, values: data.days.map(()=>560), dash: "target" }, { name: "Medspa pace", color: colors.medspa, values: targetPaceMedspa, dash: "pace" }]} max={600} /></ChartCard>
@@ -101,5 +103,5 @@ export default function GraphsPage({ onNavigate }: { onNavigate: (tab: string) =
 }
 
 function GraphFrame({ children, nav, onNavigate }: { children: React.ReactNode; nav: string[]; onNavigate: (tab: string) => void }) {
-  return <main className="graphs-app"><header className="dash-top"><div className="dash-brand">✦ <b>command<span>center</span></b></div><nav>{nav.map((tab,index)=><button key={tab} className={tab === "Graphs" ? "selected" : ""} onClick={()=>onNavigate(tab)}><span>{["◫","◷","☾","⌁","▦"][index]}</span>{tab}</button>)}</nav><div className="dash-user"><span className="avatar">M</span><span><b>Mustafa</b><small>KARACHI · PKT</small></span></div></header>{children}</main>;
+  return <main className="graphs-app"><header className="dash-top"><div className="dash-brand">✦ <b>command<span>center</span></b></div><nav>{nav.map((tab,index)=><button key={tab} className={tab === "Graphs" ? "selected" : ""} onClick={()=>onNavigate(tab)}><span>{["◫","◷","☾","◎","↘","▤","▦","⌁","⌕","◷"][index]}</span>{tab}</button>)}</nav><div className="dash-user"><span className="avatar">M</span><span><b>Mustafa</b><small>KARACHI · PKT</small></span></div></header>{children}</main>;
 }

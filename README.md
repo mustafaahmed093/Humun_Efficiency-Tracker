@@ -1,13 +1,13 @@
 # Command Center
 
-Command Center is a private, mobile-first tracker for Mustafa’s 15-day plan (9–23 October 2026, Asia/Karachi). It includes the daily schedule, time-locked nightly review, score dashboard, progress graphs, day-by-day plan, reports, Excel/JSON/calendar export, JSON import, development tools, installable PWA shell, offline check-in queue, and database snapshots.
+Command Center is a private, mobile-first personal productivity tracker. It preserves Mustafa’s original 15-day plan (9–23 October 2026, Asia/Karachi) and adds persistent goals, private Not To Do tracking, dated day planning, reusable templates, and a Past Status calendar.
 
 ## Run locally
 
-Requirements: Node.js 24 or newer and npm. The app uses a Supabase PostgreSQL database; the old local SQLite database can be exported for one-time import.
+Requirements: Node.js 24 or newer and npm. For local development, the app can use the existing SQLite file at `data/command-center.sqlite`. Vercel deployments use PostgreSQL hosted by Supabase.
 
-1. Copy `.env.example` to `.env.local`, create a Supabase project, and paste its **Transaction pooler** connection URL into `DATABASE_URL`.
-2. Set a private 4-digit `APP_PASSWORD` and random `SESSION_SECRET` (32+ characters).
+1. Copy `.env.example` to `.env.local`. Keep `LOCAL_SQLITE_PATH=command-center.sqlite` to use `data/command-center.sqlite`; set `APP_PASSWORD` and `SESSION_SECRET`.
+2. To use PostgreSQL locally instead, remove `LOCAL_SQLITE_PATH`, create a Supabase project, and set its **Transaction pooler** connection URL as `DATABASE_URL`.
 3. From this folder run:
 
    ```sh
@@ -17,11 +17,19 @@ Requirements: Node.js 24 or newer and npm. The app uses a Supabase PostgreSQL da
 
 4. Open [http://localhost:3000](http://localhost:3000) and enter the password.
 
-The app creates its PostgreSQL tables and seeds the schedule on first use. Use Supabase’s Transaction pooler URL for Vercel. Keep the database URL server-side; never expose it through a `NEXT_PUBLIC_` variable. The project URL and publishable key are not needed for this direct PostgreSQL connection.
+The local SQLite database is initialized and seeded on first use. For Vercel, configure `DATABASE_URL` with Supabase’s Transaction pooler URL and leave `LOCAL_SQLITE_PATH` unset. Keep the database URL server-side; never expose it through a `NEXT_PUBLIC_` variable. The project URL and publishable key are not needed for this direct PostgreSQL connection.
 
 ## Features
 
 - Aaj schedule with done/missed check-ins, missed reasons, linked prayer check-ins, optimistic updates, and an offline queue that syncs when the device reconnects.
+- Goals with a multi-step setup, milestones, primary focus, daily check-ins, progress and execution metrics, deadline tracking, pause/resume, completion, and archive.
+- Goal dependency links with cycle prevention, weekly reviews, completion reflections, and next-step rescue actions for goals at risk or behind.
+- Private Not To Do rules with daily outcomes, urge and slip reflections, streaks, and history-aware consistency. Missing days are not counted as success.
+- Date-specific plans with custom activities, goal links, duration/status tracking, overlap warnings, drag-to-reorder, the original 15-day blueprint, and reusable templates.
+- Past Status calendar that distinguishes execution records from unexecuted plans and keeps the original fixed-plan records available.
+- Search across goals, milestones, plans, rules, templates, and submitted reflections; daily/weekly reminders with browser-local notifications while the app is open.
+- Ongoing nightly reviews for dates outside the original 15-day plan, using dated planner activities and preserving the original plan-specific prayer workflow.
+- Version 2 JSON/XLSX exports and merge imports for life-system records. Private Not To Do data is omitted unless sensitive export is explicitly requested; backups include it.
 - Review window checked against server time in Karachi. The normal window is 00:30 inclusive to 01:00 exclusive for the previous plan day. The optional late window is 01:00 to 03:00 exclusive.
 - Dashboard, six rule-based scores, score trends, goal progress, and nine progress visualizations.
 - Fifteen-day overview, JSON/Excel/ICS exports, JSON merge import, and a private report summary that can omit mental-health and safety fields.
@@ -29,7 +37,7 @@ The app creates its PostgreSQL tables and seeds the schedule on first use. Use S
 - PWA manifest, icon, service worker, and offline fallback page. In a secure origin the browser can install the app. The service worker does not cache authenticated pages or API responses.
 - Up to 14 daily JSON snapshots stored in PostgreSQL. They refresh on data writes and when “Save backup now” is used. “Delete all my data” writes a final snapshot before clearing tracker records.
 
-Snapshots share the same Supabase database as tracker data, so they do not protect against loss of that project. Download a JSON export regularly and keep it somewhere private.
+Snapshots share the same database as tracker data, so they do not protect against loss of that database. Download a JSON export regularly and keep it somewhere private. Browser reminders require notification permission and the app to remain open in a visible tab; they are not background push notifications.
 
 ## Security and deployment status
 
@@ -55,7 +63,7 @@ npm run dev      # Local development server
 npm run build    # Production compilation check
 npm run start    # Serve a production build (requires the environment variables above)
 npm run lint     # ESLint
-npm test         # Schedule, review-window, and scoring unit checks
+npm test         # Schedule, review-window, scoring, goal, habit, and planner-metric checks
 ```
 
 To export an existing local SQLite database into a JSON file for the deployed app, run `npm run migrate:local-data`; then import that file from **15 Din → Import JSON**. The generated file is ignored by Git.

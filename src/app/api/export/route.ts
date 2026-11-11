@@ -75,7 +75,36 @@ export async function collect(from: string, to: string, includeSensitive: boolea
     const complete = countable.filter(block => logMap.get(block.id)?.status === "done").length;
     return { plan_day: day, done: complete, logged, scheduled: countable.length, completion_pct: countable.length ? Math.round(complete / countable.length * 100) : 0 };
   });
-  return { formatVersion: 1, range: { from, to }, days, scheduleLog, reviews, dailyScores, goals, prayers, crossedReasons, completion };
+  const [goalRows, milestoneRows, goalCheckins, goalCheckinHistory, weeklyReviews, deadlineHistory, dependencies,
+    ruleRows, habitCheckins, habitCheckinHistory, dailyPlans, activities, templateRows, templateActivities, reminders] = await Promise.all([
+    query("SELECT * FROM goals"),
+    query("SELECT * FROM goal_milestones"),
+    query("SELECT * FROM goal_checkins"),
+    query("SELECT * FROM goal_checkin_history"),
+    query("SELECT * FROM goal_weekly_reviews"),
+    query("SELECT * FROM goal_deadline_history"),
+    query("SELECT * FROM goal_dependencies"),
+    query("SELECT * FROM not_to_do_rules"),
+    includeSensitive ? query("SELECT * FROM not_to_do_checkins") : Promise.resolve({ rows: [] }),
+    includeSensitive ? query("SELECT * FROM not_to_do_checkin_history") : Promise.resolve({ rows: [] }),
+    query("SELECT * FROM daily_plans"),
+    query("SELECT * FROM daily_activities"),
+    query("SELECT * FROM daily_templates"),
+    query("SELECT * FROM daily_template_activities"),
+    query("SELECT * FROM daily_reminders"),
+  ]);
+  return {
+    formatVersion: 2, range: { from, to }, days, scheduleLog, reviews, dailyScores, goals, prayers, crossedReasons, completion,
+    lifeSystem: {
+      goals: goalRows.rows, milestones: milestoneRows.rows, goalCheckins: goalCheckins.rows,
+      goalCheckinHistory: goalCheckinHistory.rows, weeklyReviews: weeklyReviews.rows,
+      deadlineHistory: deadlineHistory.rows, dependencies: dependencies.rows,
+      notToDoRules: includeSensitive ? ruleRows.rows : [], habitCheckins: habitCheckins.rows,
+      habitCheckinHistory: habitCheckinHistory.rows, dailyPlans: dailyPlans.rows, activities: activities.rows,
+      templates: templateRows.rows, templateActivities: templateActivities.rows, reminders: reminders.rows,
+      privateHabitDataIncluded: includeSensitive,
+    },
+  };
 }
 
 const prayerNames = ["Fajr", "Zohr", "Asr", "Maghrib", "Isha"];
@@ -101,6 +130,16 @@ export async function GET(request: NextRequest) {
   add("Goals_Cumulative", data.goals);
   add("Prayers", data.prayers);
   add("Crossed_Reasons", data.crossedReasons);
+  add("Life_Goals", data.lifeSystem.goals as Record<string, unknown>[]);
+  add("Goal_Milestones", data.lifeSystem.milestones as Record<string, unknown>[]);
+  add("Goal_Checkins", data.lifeSystem.goalCheckins as Record<string, unknown>[]);
+  add("Weekly_Reviews", data.lifeSystem.weeklyReviews as Record<string, unknown>[]);
+  add("Daily_Activities", data.lifeSystem.activities as Record<string, unknown>[]);
+  add("Daily_Plans", data.lifeSystem.dailyPlans as Record<string, unknown>[]);
+  add("Not_To_Do_Rules", data.lifeSystem.notToDoRules as Record<string, unknown>[]);
+  add("Habit_Checkins", data.lifeSystem.habitCheckins as Record<string, unknown>[]);
+  add("Daily_Templates", data.lifeSystem.templates as Record<string, unknown>[]);
+  add("Reminders", data.lifeSystem.reminders as Record<string, unknown>[]);
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
   return new NextResponse(new Uint8Array(buffer), { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename=command-center-${from}-to-${to}.xlsx`, "Cache-Control": "no-store" } });
 }

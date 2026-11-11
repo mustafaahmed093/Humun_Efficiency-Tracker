@@ -16,7 +16,7 @@ export function planDayForDate(date: Date): string {
   const local = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
   if (local.getHours() < 4) local.setDate(local.getDate() - 1);
   const day = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`;
-  return day < planStart ? planStart : day;
+  return day < planStart ? planStart : day > planEnd ? planEnd : day;
 }
 
 export function getSchedule(day: string): ScheduleBlock[] {

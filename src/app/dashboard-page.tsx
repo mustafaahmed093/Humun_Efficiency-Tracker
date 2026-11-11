@@ -14,6 +14,11 @@ type Data = {
   goals: { outbound: { current: number; target: number }; medspa: { current: number; target: number }; clients: { current: number; target: number }; linkedinInbound: { current: number }; startup: { current: number } };
   reviewComplete: boolean;
 };
+type LifeData = {
+  date: string; activeGoals: number; totalGoals: number; primaryGoal: { id: string; title: string; target_date: string | null } | null;
+  goalCheckins: number; activeHabits: number; totalHabits: number; habitCheckins: number;
+  planned: { total: number; completed: number; partial: number; missed: number };
+};
 
 const scoreNames: Record<string, string> = { business: "Business", health: "Health", mental: "Mental", focus: "Focus", religious: "Religious", overall: "Overall" };
 const scoreColors: Record<string, string> = { business: "#5683dc", health: "#df9854", mental: "#d77a9b", focus: "#8170d8", religious: "#4e9b76", overall: "#376e50" };
@@ -36,6 +41,7 @@ export default function DashboardPage({ day, onNavigate }: { day: string; onNavi
   const [data, setData] = useState<Data | null>(null);
   const [now, setNow] = useState(new Date());
   const [error, setError] = useState("");
+  const [lifeData, setLifeData] = useState<LifeData | null>(null);
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -49,16 +55,26 @@ export default function DashboardPage({ day, onNavigate }: { day: string; onNavi
         }
       } catch (cause) { if (active) setError(cause instanceof Error ? cause.message : "Kuch ghalat ho gaya."); }
     };
+    const loadLifeData = async () => {
+      try {
+        const response = await fetch("/api/life-dashboard", { cache: "no-store" });
+        if (!response.ok) throw new Error("Life system summary is unavailable.");
+        if (active) setLifeData(await response.json() as LifeData);
+      } catch {
+        if (active) setLifeData(null);
+      }
+    };
     void load();
+    void loadLifeData();
     const refresh = window.setInterval(() => { void load(); }, 30_000);
     return () => { active = false; window.clearInterval(refresh); };
   }, [day]);
   const current = useMemo(() => currentScheduleInfo(day, now), [day, now]);
-  const nav = ["Dashboard", "Aaj", "Review", "Graphs", "15 Din"];
+  const nav = ["Dashboard", "Aaj", "Review", "Goals", "Not To Do", "Plan a Day", "Past Status", "Graphs", "Search", "Reminders"];
   const date = `${weekdayName(day)}, ${formatDay(day)} 2026`;
 
   return <main className="dashboard-page">
-    <header className="dash-top"><div className="dash-brand">✦ <b>command<span>center</span></b></div><nav>{nav.map((tab, i) => <button key={tab} className={tab === "Dashboard" ? "selected" : ""} onClick={() => onNavigate(tab)}><span>{["◫", "◷", "☾", "⌁", "▦"][i]}</span>{tab}</button>)}</nav><div className="dash-user"><span className="avatar">M</span><span><b>Mustafa</b><small>KARACHI · PKT</small></span></div></header>
+    <header className="dash-top"><div className="dash-brand">✦ <b>command<span>center</span></b></div><nav>{nav.map((tab, i) => <button key={tab} className={tab === "Dashboard" ? "selected" : ""} onClick={() => onNavigate(tab)}><span>{["◫", "◷", "☾", "◎", "↘", "▤", "▦", "⌁", "⌕", "◷"][i]}</span>{tab}</button>)}</nav><div className="dash-user"><span className="avatar">M</span><span><b>Mustafa</b><small>KARACHI · PKT</small></span></div></header>
     <div className="dash-content"><div className="dash-heading"><div><p className="eyebrow">YOUR COMMAND CENTER <span className="live-pill"><i /> YOUR PLAN IS LIVE</span></p><h1>Welcome back, Mustafa.</h1><p>Ek din. Ek qadam. Aaj tumhari kahani ka naya safha hai.</p></div><div className="dash-date">◷ <span>{date}<small>15 din ka reset · {formatDay(day)} — 21 Oct</small></span></div></div>
       {error && <div className="dash-error">{error} <button onClick={() => location.reload()}>Retry</button></div>}
       {!data ? <div className="score-grid">{scoreNames && Object.keys(scoreNames).map(key => <div className="score-card skeleton" key={key} />)}</div> : <>
@@ -77,6 +93,11 @@ export default function DashboardPage({ day, onNavigate }: { day: string; onNavi
           <article className="quote-card"><span>“</span><p>Consistency, motivation se zyada powerful hai.</p><small>Aaj apna waada nibhao.</small></article>
         </aside></div>
       </>}
+      {lifeData && <section className="life-unified-dashboard"><p className="eyebrow">YOUR WHOLE DAY · {lifeData.date}</p><h2>Life system check-in</h2><div className="life-unified-cards">
+        <article><b>{lifeData.primaryGoal?.title ?? "Choose a primary goal"}</b><small>{lifeData.activeGoals} active goals · {lifeData.goalCheckins} goal check-ins today</small></article>
+        <article><b>{lifeData.planned.completed}/{lifeData.planned.total} planned activities complete</b><small>{lifeData.planned.partial} partial · {lifeData.planned.missed} missed</small></article>
+        <article><b>{lifeData.habitCheckins}/{lifeData.activeHabits} Not To Do check-ins</b><small>{lifeData.totalGoals} saved goals · {lifeData.totalHabits} tracking rules</small></article>
+      </div><div className="life-unified-actions"><button onClick={() => onNavigate("Goals")}>Check in on goals</button><button onClick={() => onNavigate("Plan a Day")}>Update today&apos;s plan</button><button onClick={() => onNavigate("Not To Do")}>Private habit check-in</button><button onClick={() => onNavigate("Past Status")}>Browse history</button></div></section>}
       <footer className="page-footer"><span>MADE FOR YOUR NEXT CHAPTER</span><span>DAY {String(Math.max(0, new Date(`${day}T00:00:00Z`).getUTCDate() - 6)).padStart(2, "0")} OF YOUR RESET <i>✦</i></span></footer>
     </div>
   </main>;
