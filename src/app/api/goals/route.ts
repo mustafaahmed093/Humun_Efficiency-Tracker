@@ -27,15 +27,15 @@ export async function GET(request: NextRequest) {
     const [checkins, milestones] = await Promise.all([
       query<{ checkin_date: string; hours: number; output_value: number | null; target_met: number | null }>(
         "SELECT checkin_date,hours,output_value,target_met FROM goal_checkins WHERE goal_id=$1 ORDER BY checkin_date", [goal.id]),
-      query<{ id: string; title: string; due_date: string | null; status: string; position: number }>(
-        "SELECT id,title,due_date,status,position FROM goal_milestones WHERE goal_id=$1 ORDER BY position,due_date", [goal.id]),
+      query<{ id: string; title: string; description: string | null; due_date: string | null; target_value: number | null; status: string; position: number; completed_at: string | null; data_json: string }>(
+        "SELECT id,title,description,due_date,target_value,status,position,completed_at,data_json FROM goal_milestones WHERE goal_id=$1 ORDER BY position,due_date", [goal.id]),
     ]);
     return {
       ...goal,
       is_primary: Boolean(goal.is_primary),
       data: JSON.parse(goal.data_json),
       metrics: calculateGoalMetrics(goal, checkins.rows, effectiveServerNow().toISOString().slice(0, 10)),
-      milestones: milestones.rows,
+      milestones: milestones.rows.map(item=>({...item,data:JSON.parse(item.data_json)})),
     };
   }));
   return NextResponse.json({ goals });

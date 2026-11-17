@@ -5,6 +5,7 @@ import { findScheduleConflicts } from "@/lib/life-system";
 import { getSchedule, planStart } from "@/lib/schedule";
 import { effectiveServerNow } from "@/lib/server-time";
 import { isUnlocked } from "@/lib/auth";
+import { getPlannerDurationMinutes } from "@/lib/planner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,6 +80,17 @@ export async function POST(request: NextRequest) {
   const start = typeof body.startTime === "string" && body.startTime ? body.startTime : null;
   const end = typeof body.endTime === "string" && body.endTime ? body.endTime : null;
   if (!timeOrder(start, end)) return NextResponse.json({ error: "An activity cannot exceed 24 hours." }, { status: 400 });
+  const activityData = body.data && typeof body.data === "object" && !Array.isArray(body.data) ? body.data as Record<string, unknown> : {};
+  const endDate = activityData.endDate === undefined ? body.date : activityData.endDate;
+  if (!validDate(endDate) || (start && end && getPlannerDurationMinutes(body.date, start, endDate, end) === null)) {
+    return NextResponse.json({ error: "Activity end date and time must define a duration of no more than 24 hours." }, { status: 400 });
+  }
+  const existing = (await query<{ id: string; title: string; start_time: string | null; end_time: string | null; goal_id: string | null }>(
+    "SELECT id,title,start_time,end_time,goal_id FROM daily_activities WHERE plan_date=$1", [body.date])).rows;
+  if (existing.some(activity => activity.title.trim().toLowerCase() === title.toLowerCase() &&
+    activity.start_time === start && activity.end_time === end && activity.goal_id === (typeof body.goalId === "string" ? body.goalId : null))) {
+    return NextResponse.json({ error: "An activity with the same title, time, and goal already exists on this date." }, { status: 409 });
+  }
   const id = randomUUID();
   const position = (await query<{ max: number | null }>("SELECT MAX(position) AS max FROM daily_activities WHERE plan_date=$1", [body.date])).rows[0]?.max ?? -1;
   await transaction(async client => {
@@ -88,7 +100,7 @@ export async function POST(request: NextRequest) {
     [id, body.date, title, start, end,
       category, ["critical", "high", "medium", "low"].includes(String(body.priority)) ? body.priority : "medium",
       typeof body.goalId === "string" ? body.goalId : null, typeof body.milestoneId === "string" ? body.milestoneId : null,
-      JSON.stringify(body.data && typeof body.data === "object" ? body.data : {}), position + 1, now]);
+      JSON.stringify(activityData), position + 1, now]);
     await client.query("UPDATE daily_plans SET updated_at=$1 WHERE plan_date=$2", [now, body.date]);
   });
   const activities = (await query<Activity>("SELECT * FROM daily_activities WHERE plan_date=$1 ORDER BY position,start_time", [body.date])).rows;

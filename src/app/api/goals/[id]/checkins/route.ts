@@ -34,20 +34,26 @@ export async function POST(request: NextRequest, context: Context) {
   const id = randomUUID();
   const data = body.data && typeof body.data === "object" && !Array.isArray(body.data) ? body.data : {};
   const result = await transaction(async client => {
-    const goal = (await client.query<{ id: string }>("SELECT id FROM goals WHERE id=$1 AND archived_at IS NULL", [goalId])).rows[0];
+    const goal = (await client.query<{ id: string; current_value: number }>("SELECT id,current_value FROM goals WHERE id=$1 AND archived_at IS NULL", [goalId])).rows[0];
     if (!goal) return { error: "Active goal not found." };
     const existing = (await client.query<{ id: string; worked: number; hours: number; output_value: number | null; target_met: number | null; data_json: string }>(
       "SELECT id,worked,hours,output_value,target_met,data_json FROM goal_checkins WHERE goal_id=$1 AND checkin_date=$2", [goalId, date])).rows[0];
+    if ((existing?.output_value ?? null) !== outputValue && (existing?.output_value !== null && existing?.output_value !== undefined || outputValue !== null)) {
+      const nextValue = Math.max(0, Number(goal.current_value) - Number(existing?.output_value ?? 0) + Number(outputValue ?? 0));
+      await client.query("UPDATE goals SET current_value=$1,updated_at=$2 WHERE id=$3", [nextValue, now, goalId]);
+    }
     if (existing) {
       await client.query("INSERT INTO goal_checkin_history (id,checkin_id,previous_json,changed_at) VALUES ($1,$2,$3,$4)",
         [randomUUID(), existing.id, JSON.stringify(existing), now]);
     }
     const checkinId = existing?.id ?? id;
+    const previousData = existing ? JSON.parse(existing.data_json) as Record<string, unknown> : {};
+    const savedData = { ...previousData, ...data, manualOverride: true, manualHours: hours, plannerOnly: false };
     await client.query(`INSERT INTO goal_checkins (id,goal_id,checkin_date,worked,hours,output_value,target_met,data_json,created_at,updated_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)
       ON CONFLICT(goal_id,checkin_date) DO UPDATE SET worked=excluded.worked,hours=excluded.hours,
         output_value=excluded.output_value,target_met=excluded.target_met,data_json=excluded.data_json,updated_at=excluded.updated_at`,
-    [checkinId, goalId, date, body.worked ? 1 : 0, hours, outputValue, targetMet, JSON.stringify(data), now]);
+    [checkinId, goalId, date, body.worked ? 1 : 0, hours, outputValue, targetMet, JSON.stringify(savedData), now]);
     return { id: checkinId, updated: Boolean(existing) };
   });
   if ("error" in result) return NextResponse.json({ error: result.error }, { status: 404 });

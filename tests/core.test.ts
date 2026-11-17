@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getSchedule, planDayForDate } from "../src/lib/schedule.ts";
+import { getSchedule, karachiCalendarDate, planDayForDate } from "../src/lib/schedule.ts";
 import { getReviewWindow } from "../src/lib/review-time.ts";
 import { calculateScores } from "../src/lib/scoring.ts";
+import { enumerateRecurrenceDates, getPlannerDurationMinutes, getPlannerWeekDates, recurrenceIncludesDate } from "../src/lib/planner.ts";
 import {
   calculateAvoidanceMetrics,
   calculateGoalMetrics,
   findScheduleConflicts,
   hasGoalDependencyCycle,
+  redactPrivateReviewAnswers,
 } from "../src/lib/life-system.ts";
 
 test("selects the fixed schedule for each weekday type", () => {
@@ -22,6 +24,10 @@ test("assigns 00:00–03:59 Karachi clock times to the previous plan day", () =>
   assert.equal(planDayForDate(new Date("2026-10-09T22:59:00.000Z")), "2026-10-09"); // 03:59 PKT
   assert.equal(planDayForDate(new Date("2026-10-09T23:00:00.000Z")), "2026-10-10"); // 04:00 PKT
   assert.equal(planDayForDate(new Date("2026-11-11T12:00:00.000Z")), "2026-10-23"); // After the plan ends
+});
+
+test("keeps the Karachi calendar date continuous after the original blueprint", () => {
+  assert.equal(karachiCalendarDate(new Date("2026-11-12T19:00:00.000Z")), "2026-11-13");
 });
 
 test("enforces the nightly review window using Asia/Karachi server time", () => {
@@ -112,6 +118,32 @@ test("detects same-day and overnight schedule overlaps", () => {
   ]);
 });
 
+test("planner week dates start Monday and include the selected date", () => {
+  assert.deepEqual(getPlannerWeekDates("2026-11-18"), [
+    "2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20", "2026-11-21", "2026-11-22",
+  ]);
+});
+
+test("planner duration supports overnight blocks and caps activities at 24 hours", () => {
+  assert.equal(getPlannerDurationMinutes("2026-11-18", "23:00", "2026-11-19", "01:00"), 120);
+  assert.equal(getPlannerDurationMinutes("2026-11-18", "09:00", "2026-11-18", "09:00"), 1440);
+  assert.equal(getPlannerDurationMinutes("2026-11-18", "09:00", "2026-11-19", "10:00"), null);
+});
+
+test("recurrence applies only to the selected weekday and respects its end date", () => {
+  const rule = { frequency: "weekly" as const, weekdays: [1], customDates: [], endDate: "2026-12-01" };
+  assert.equal(recurrenceIncludesDate("2026-11-16", "2026-11-23", rule), true);
+  assert.equal(recurrenceIncludesDate("2026-11-16", "2026-11-24", rule), false);
+  assert.equal(recurrenceIncludesDate("2026-11-16", "2026-12-07", rule), false);
+  assert.deepEqual(enumerateRecurrenceDates("2026-11-16", rule, "2026-12-10"), ["2026-11-16", "2026-11-23", "2026-11-30"]);
+});
+
+test("custom recurrence dates are unique, sorted, and limited to the requested range", () => {
+  assert.deepEqual(enumerateRecurrenceDates("2026-11-16", {
+    frequency: "custom", weekdays: [], customDates: ["2026-11-25", "2026-11-18", "2026-11-25", "2026-11-12"], endDate: null,
+  }, "2026-11-30"), ["2026-11-18", "2026-11-25"]);
+});
+
 test("detects dependency cycles without rejecting unrelated dependencies", () => {
   const edges = [
     { goal_id: "a", depends_on_goal_id: "b" },
@@ -120,4 +152,9 @@ test("detects dependency cycles without rejecting unrelated dependencies", () =>
   assert.equal(hasGoalDependencyCycle(edges, "c", "a"), true);
   assert.equal(hasGoalDependencyCycle(edges, "a", "c"), false);
   assert.equal(hasGoalDependencyCycle(edges, "a", "a"), true);
+});
+
+test("default review exports redact sensitive fields, including Not To Do reflections", () => {
+  const filtered = redactPrivateReviewAnswers({ mood: "Sad", stressNote: "private", habitCheckins: { rule: { trigger: "private" } }, biggestAchievement: "finished work", goalCheckins: { goal: { hours: 2 } } });
+  assert.deepEqual(filtered, { biggestAchievement: "finished work", goalCheckins: { goal: { hours: 2 } } });
 });

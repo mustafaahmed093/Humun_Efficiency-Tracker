@@ -3,7 +3,6 @@
 const links = [
   ["Dashboard", "◫"], ["Aaj", "◷"], ["Review", "☾"], ["Goals", "◎"],
   ["Not To Do", "↘"], ["Plan a Day", "▤"], ["Past Status", "▦"], ["Graphs", "⌁"],
-  ["Search", "⌕"], ["Reminders", "◷"],
 ];
 
 export default function LifeFrame({ active, onNavigate, children }: {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { categories, formatDay, getPlanDays, getSchedule, planDayForDate, planEnd, planStart, weekdayName, type ScheduleBlock } from "@/lib/schedule";
+import { categories, formatDay, getPlanDays, getSchedule, karachiCalendarDate, planEnd, planStart, weekdayName, type ScheduleBlock } from "@/lib/schedule";
 import DashboardPage from "@/app/dashboard-page";
 import ReviewPage from "@/app/review-page";
 import GraphsPage from "@/app/graphs-page";
@@ -17,9 +17,10 @@ type Log = { id: string; day: string; status: "done" | "missed"; reason: string 
 const reasons = ["Overthinking", "Neend / Thakan", "Phone / Distraction", "Dusra zaroori kaam", "Family", "Tabiyat", "Lazy feel hua", "Other"];
 const prayers = ["Fajr", "Zohr", "Asr", "Maghrib", "Isha"];
 const planDays = getPlanDays();
+const temporarilyHiddenTabs = new Set(["Search", "Reminders"]);
 
 function pakistanToday() {
-  return planDayForDate(new Date());
+  return karachiCalendarDate();
 }
 
 export default function Home() {
@@ -39,13 +40,19 @@ export default function Home() {
   const lastServerDay = useRef<string | null>(null);
   const [sync, setSync] = useState("Synced");
   const [toast, setToast] = useState("");
-  const today = planDayForDate(clock);
+  const today = karachiCalendarDate(clock);
   const isFuture = day > today;
   const dayIndex = planDays.indexOf(day) + 1;
   const blocks = useMemo(() => getSchedule(day), [day]);
   const completion = blocks.length ? Math.round(blocks.filter(b => logs[b.id]?.status === "done").length / blocks.length * 100) : 0;
 
   const loadDay = useCallback(async (which: string) => {
+    if (which < planStart || which > planEnd) {
+      setLogs({});
+      setOffline(false);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`/api/day?date=${which}`, { cache: "no-store" });
@@ -98,8 +105,8 @@ export default function Home() {
         const payload = await response.json() as { serverNow: string; planDay: string };
         if (!active) return;
         setClock(new Date(payload.serverNow));
-        setDay(current => lastServerDay.current === null || current === lastServerDay.current ? payload.planDay : current);
-        lastServerDay.current = payload.planDay;
+        setDay(current => lastServerDay.current === null || current === lastServerDay.current ? karachiCalendarDate(new Date(payload.serverNow)) : current);
+        lastServerDay.current = karachiCalendarDate(new Date(payload.serverNow));
       } catch { setOffline(true); }
     };
     const initial = window.setTimeout(() => void refresh(), 0);
@@ -171,7 +178,9 @@ export default function Home() {
 
   if (!unlocked && pinOpen) return <main className="unlock-screen"><div className="unlock-card"><div className="brand-mark">✦</div><p className="eyebrow">MUSTAFA · PRIVATE SPACE</p><h1>Command<br /><em>Center.</em></h1><p className="muted">Apne aaj ko behtar banane ka ek chhota qadam.</p><label className="pin-label" htmlFor="pin">4-DIGIT PIN</label><input id="pin" className="pin-input" type="password" inputMode="numeric" maxLength={4} autoComplete="current-password" value={pin} onChange={e => { setPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setPinError(""); }} onKeyDown={e => e.key === "Enter" && void unlock()} placeholder="••••" autoFocus /><button className="primary-button unlock-button" onClick={() => void unlock()}>Unlock <span>→</span></button>{pinError && <p className="form-error">{pinError}</p>}<p className="small muted center">Private account · session expires after 12 hours</p></div></main>;
 
+  if (temporarilyHiddenTabs.has(tab)) return <DashboardPage day={today} onNavigate={setTab} />;
   if (tab === "Dashboard") return <DashboardPage day={today} onNavigate={setTab} />;
+  if (tab === "Aaj") return <PlannerPage onNavigate={setTab} />;
   if (tab === "Review") return <ReviewPage onNavigate={setTab} />;
   if (tab === "Graphs") return <GraphsPage onNavigate={setTab} />;
   if (tab === "Goals") return <GoalsPage onNavigate={setTab} />;
@@ -183,11 +192,11 @@ export default function Home() {
   if (tab === "15 Din") return <PlanPage onNavigate={setTab} onDaySelect={setDay} />;
 
   const statusLabel = (block: ScheduleBlock) => logs[block.id]?.status;
-  const nav = ["Dashboard", "Aaj", "Review", "Goals", "Not To Do", "Plan a Day", "Past Status", "Graphs", "Search", "Reminders"];
+  const nav = ["Dashboard", "Aaj", "Review", "Goals", "Not To Do", "Plan a Day", "Past Status", "Graphs"];
   const timeLabel = (s: string) => s.replace(/^0/, "");
 
   return <main className="app-shell">
-      <aside className="sidebar"><div className="side-brand"><span>✦</span><div>command<span>center</span></div></div><div className="side-caption">YOUR PERSONAL OS</div><div className="side-progress"><div className="progress-copy"><span>THE PLAN</span><b>{dayIndex > 0 ? `DAY ${dayIndex} / 15` : "15 DAYS"}</b></div><div className="progress-line"><i style={{ width: `${Math.max(0, dayIndex) / 15 * 100}%` }} /></div><div className="progress-dates">{formatDay(planStart).toUpperCase()} <span>{formatDay(planEnd).toUpperCase()} {planEnd.slice(0, 4)}</span></div></div><nav className="side-nav">{nav.map((item, i) => <button key={item} className={`nav-item ${tab === item ? "active" : ""}`} onClick={() => setTab(item)}><span className="nav-icon">{["◫", "◷", "☾", "◎", "↘", "▤", "▦", "⌁", "⌕", "◷"][i]}</span>{item}{tab === item && <i />}</button>)}</nav><div className="side-bottom"><div className="avatar">M</div><div><b>Mustafa</b><small>Karachi, PKT</small></div><button title="Lock" className="lock-button" onClick={() => { void fetch("/api/auth/unlock", { method: "DELETE" }); setUnlocked(false); setPinOpen(true); }}>↗</button></div></aside>
+      <aside className="sidebar"><div className="side-brand"><span>✦</span><div>command<span>center</span></div></div><div className="side-caption">YOUR PERSONAL OS</div><div className="side-progress"><div className="progress-copy"><span>THE PLAN</span><b>{dayIndex > 0 ? `DAY ${dayIndex} / 15` : "15 DAYS"}</b></div><div className="progress-line"><i style={{ width: `${Math.max(0, dayIndex) / 15 * 100}%` }} /></div><div className="progress-dates">{formatDay(planStart).toUpperCase()} <span>{formatDay(planEnd).toUpperCase()} {planEnd.slice(0, 4)}</span></div></div><nav className="side-nav">{nav.map((item, i) => <button key={item} className={`nav-item ${tab === item ? "active" : ""}`} onClick={() => setTab(item)}><span className="nav-icon">{["◫", "◷", "☾", "◎", "↘", "▤", "▦", "⌁"][i]}</span>{item}{tab === item && <i />}</button>)}</nav><div className="side-bottom"><div className="avatar">M</div><div><b>Mustafa</b><small>Karachi, PKT</small></div><button title="Lock" className="lock-button" onClick={() => { void fetch("/api/auth/unlock", { method: "DELETE" }); setUnlocked(false); setPinOpen(true); }}>↗</button></div></aside>
     <section className="main-area">
       {offline && <div className="offline-banner">You’re offline — changes save on this device and will sync when you reconnect.</div>}
       <header className="topbar"><div className="mobile-brand">✦ <b>command<span>center</span></b></div><span className="breadcrumb">YOUR SPACE <b>/</b> {tab.toUpperCase()}</span><div className="top-actions"><span className="sync-indicator"><i />{sync}</span><button className="theme-button" aria-label="Theme">◐</button><div className="avatar small-avatar">M</div></div></header>

@@ -60,7 +60,7 @@ export default function GraphsPage({ onNavigate }: { onNavigate: (tab: string) =
   const [selected, setSelected] = useState<string[]>(["business", "health", "mental", "focus", "religious", "overall"]);
   const [error, setError] = useState("");
   useEffect(() => { let active = true; void fetch("/api/export?includeSensitive=1", { cache: "no-store" }).then(async response => { if (!response.ok) throw new Error("Graphs load nahi ho sake."); return await response.json() as ExportData; }).then(result => { if (active) setData(result); }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : "Try again."); }); return () => { active = false; }; }, []);
-  const nav = ["Dashboard", "Aaj", "Review", "Goals", "Not To Do", "Plan a Day", "Past Status", "Graphs", "Search", "Reminders"];
+  const nav = ["Dashboard", "Aaj", "Review", "Goals", "Not To Do", "Plan a Day", "Past Status", "Graphs"];
   if (!data) return <GraphFrame nav={nav} onNavigate={onNavigate}><div className="graphs-loading">{error || "Graphs tayyar ho rahe hain…"}</div></GraphFrame>;
   const labels = data.days.map(day => formatDay(day).split(" ")[0]);
   const completion = data.completion.map(item => item.completion_pct);
@@ -103,5 +103,5 @@ export default function GraphsPage({ onNavigate }: { onNavigate: (tab: string) =
 }
 
 function GraphFrame({ children, nav, onNavigate }: { children: React.ReactNode; nav: string[]; onNavigate: (tab: string) => void }) {
-  return <main className="graphs-app"><header className="dash-top"><div className="dash-brand">✦ <b>command<span>center</span></b></div><nav>{nav.map((tab,index)=><button key={tab} className={tab === "Graphs" ? "selected" : ""} onClick={()=>onNavigate(tab)}><span>{["◫","◷","☾","◎","↘","▤","▦","⌁","⌕","◷"][index]}</span>{tab}</button>)}</nav><div className="dash-user"><span className="avatar">M</span><span><b>Mustafa</b><small>KARACHI · PKT</small></span></div></header>{children}</main>;
+  return <main className="graphs-app"><header className="dash-top"><div className="dash-brand">✦ <b>command<span>center</span></b></div><nav>{nav.map((tab,index)=><button key={tab} className={tab === "Graphs" ? "selected" : ""} onClick={()=>onNavigate(tab)}><span>{["◫","◷","☾","◎","↘","▤","▦","⌁"][index]}</span>{tab}</button>)}</nav><div className="dash-user"><span className="avatar">M</span><span><b>Mustafa</b><small>KARACHI · PKT</small></span></div></header>{children}</main>;
 }

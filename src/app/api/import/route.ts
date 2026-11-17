@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { transaction } from "@/lib/db";
-import { getSchedule, planEnd, planStart } from "@/lib/schedule";
+import { getSchedule } from "@/lib/schedule";
 import { tryWriteDailyBackup } from "@/lib/backup";
 import { isUnlocked } from "@/lib/auth";
 
@@ -13,7 +13,11 @@ type ImportData = {
   lifeSystem?: Record<string, unknown>;
 };
 type ImportRow = Record<string, unknown>;
-function validDay(day: string) { return /^\d{4}-\d{2}-\d{2}$/.test(day) && day >= planStart && day <= planEnd; }
+function validDay(day: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < "2000-01-01" || day > "2200-12-31") return false;
+  const parsed = Date.parse(`${day}T00:00:00Z`);
+  return !Number.isNaN(parsed) && new Date(parsed).toISOString().slice(0, 10) === day;
+}
 function field(row: ImportRow, key: string, fallback: unknown = null) { return row[key] === undefined ? fallback : row[key]; }
 function jsonField(row: ImportRow, key: string) { return typeof row[key] === "string" ? row[key] : JSON.stringify(row[key] ?? {}); }
 
@@ -96,9 +100,15 @@ export async function POST(request: NextRequest) {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT(id) DO UPDATE SET
       title=excluded.title,start_time=excluded.start_time,end_time=excluded.end_time,category=excluded.category,priority=excluded.priority,goal_id=excluded.goal_id,milestone_id=excluded.milestone_id,status=excluded.status,actual_start=excluded.actual_start,actual_end=excluded.actual_end,actual_duration=excluded.actual_duration,data_json=excluded.data_json,position=excluded.position,updated_at=excluded.updated_at`,
     [field(row,"id"),field(row,"plan_date"),field(row,"title",""),field(row,"start_time"),field(row,"end_time"),field(row,"category","Other"),field(row,"priority","medium"),field(row,"goal_id"),field(row,"milestone_id"),field(row,"status","planned"),field(row,"actual_start"),field(row,"actual_end"),field(row,"actual_duration"),jsonField(row,"data_json"),Number(field(row,"position",0)),field(row,"created_at",new Date().toISOString()),field(row,"updated_at",new Date().toISOString())]);
-    for (const row of rows("templateActivities")) await client.query(`INSERT INTO daily_template_activities (id,template_id,title,start_time,end_time,category,priority,data_json,position)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(id) DO NOTHING`,
-    [field(row,"id"),field(row,"template_id"),field(row,"title",""),field(row,"start_time"),field(row,"end_time"),field(row,"category","Other"),field(row,"priority","medium"),jsonField(row,"data_json"),Number(field(row,"position",0))]);
+    for (const row of rows("plannerRecurrences")) await client.query(`INSERT INTO planner_recurrences
+      (id,start_date,end_date,rule_json,active,created_at,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET start_date=excluded.start_date,
+      end_date=excluded.end_date,rule_json=excluded.rule_json,active=excluded.active,updated_at=excluded.updated_at`,
+    [field(row,"id"),field(row,"start_date"),field(row,"end_date"),jsonField(row,"rule_json"),field(row,"active",1) ? 1 : 0,field(row,"created_at",new Date().toISOString()),field(row,"updated_at",new Date().toISOString())]);
+    for (const row of rows("templateActivities")) await client.query(`INSERT INTO daily_template_activities
+      (id,template_id,title,start_time,end_time,category,priority,goal_id,milestone_id,data_json,position)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO NOTHING`,
+    [field(row,"id"),field(row,"template_id"),field(row,"title",""),field(row,"start_time"),field(row,"end_time"),field(row,"category","Other"),field(row,"priority","medium"),field(row,"goal_id"),field(row,"milestone_id"),jsonField(row,"data_json"),Number(field(row,"position",0))]);
     for (const row of rows("reminders")) await client.query(`INSERT INTO daily_reminders (id,kind,reference_id,enabled,preferred_time,frequency,data_json,created_at,updated_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,reference_id=excluded.reference_id,enabled=excluded.enabled,preferred_time=excluded.preferred_time,frequency=excluded.frequency,data_json=excluded.data_json,updated_at=excluded.updated_at`,
     [field(row,"id"),field(row,"kind","custom"),field(row,"reference_id"),field(row,"enabled",1) ? 1 : 0,field(row,"preferred_time"),field(row,"frequency","daily"),jsonField(row,"data_json"),field(row,"created_at",new Date().toISOString()),field(row,"updated_at",new Date().toISOString())]);

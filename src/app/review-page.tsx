@@ -6,8 +6,8 @@ import type { ReviewWindow } from "@/lib/review-time";
 
 type Answers = Record<string, unknown> & { prayers?: Record<string, boolean | null> };
 type ReviewBlock = { id: string; start: string; end: string; name: string; category: string; prayer?: string | null; status: "done" | "missed" | null; reason: string | null };
-type ReviewResponse = { window: ReviewWindow & { lateEntryEnabled: boolean }; day: string; inPlan: boolean; fixedPlan: boolean; blocks: ReviewBlock[]; pending: number; review: { answers: Answers; submittedAt: string | null; lateEntry: boolean } | null; summary: { scores: Record<string, number>; completion: number } | null };
-type Section = { title: string; subtitle: string; fields?: { key: string; label: string; type: "text" | "textarea" | "number" | "range" | "select" | "yesno"; options?: string[]; min?: number; max?: number; suffix?: string; placeholder?: string }[]; kind?: "prayers" | "activity" | "physical" | "missed" | "safety" };
+type ReviewResponse = { window: ReviewWindow & { lateEntryEnabled: boolean }; day: string; inPlan: boolean; fixedPlan: boolean; blocks: ReviewBlock[]; pending: number; goals: { id: string; title: string; targetUnit: string | null; dailyTarget: string | null }[]; habits: { id: string; title: string }[]; review: { answers: Answers; submittedAt: string | null; lateEntry: boolean } | null; summary: { scores: Record<string, number>; completion: number } | null };
+type Section = { title: string; subtitle: string; fields?: { key: string; label: string; type: "text" | "textarea" | "number" | "range" | "select" | "yesno"; options?: string[]; min?: number; max?: number; suffix?: string; placeholder?: string }[]; kind?: "prayers" | "activity" | "physical" | "missed" | "safety" | "goals" | "habits" };
 const prayerNames = ["Fajr", "Zohr", "Asr", "Maghrib", "Isha"];
 const scoreNames: Record<string, string> = { business: "Business", health: "Health", mental: "Mental", focus: "Focus", religious: "Religious", overall: "Overall" };
 const sections: Section[] = [
@@ -17,6 +17,8 @@ const sections: Section[] = [
     { key: "selfFeedback", label: "Apne aap ko feedback", type: "textarea", placeholder: "Kal ke liye ek baat yaad rakhna…" },
   ] },
   { title: "Namaz", subtitle: "Har namaz ka status check karo. Ye tumhare schedule ke saath sync hota hai.", kind: "prayers" },
+  { title: "Goals", subtitle: "Aaj har active goal par jo hua, usay record karo. Khali check-in missing hi rahega.", kind: "goals" },
+  { title: "Not To Do", subtitle: "Urges aur outcomes ko private, bina judgement ke note karo.", kind: "habits" },
   { title: "Business · Outbound", subtitle: "Aaj ke outbound kaam ka snapshot.", fields: [
     { key: "outboundLeads", label: "Leads worked today", type: "number", min: 0 }, { key: "outboundReplies", label: "Replies received", type: "number", min: 0 }, { key: "outboundCalls", label: "Meetings / calls booked", type: "number", min: 0 },
   ] },
@@ -82,7 +84,14 @@ export default function ReviewPage({ onNavigate }: { onNavigate: (tab: string) =
         else {
           const prayers: Record<string, boolean | null> = Object.fromEntries(prayerNames.map(name => [name, payload.blocks.find(block => block.prayer === name)?.status === "done" ? true : payload.blocks.some(block => block.prayer === name && block.status === "missed") ? false : null]));
           const crossed = payload.blocks.filter(block => block.status === "missed" && block.category !== "Review").map(block => `• ${block.name}: ${block.reason || "wajah nahi likhi"}`).join("\n");
-          setAnswers({ prayers, missedReasons: crossed, exerciseDone: payload.blocks.find(block => block.name.toLowerCase().includes("exercise"))?.status === "done", dailyLecture: payload.blocks.find(block => block.name.toLowerCase().includes("dr nauman ali khan lecture"))?.status === "done" });
+          setAnswers({
+            prayers,
+            missedReasons: crossed,
+            exerciseDone: payload.blocks.find(block => block.name.toLowerCase().includes("exercise"))?.status === "done",
+            dailyLecture: payload.blocks.find(block => block.name.toLowerCase().includes("dr nauman ali khan lecture"))?.status === "done",
+            goalCheckins: Object.fromEntries(payload.goals.map(goal => [goal.id, { worked: null, hours: "", outputValue: "", targetMet: "", tasks: "", accomplished: "", difficulties: "", lesson: "", tomorrow: "" }])),
+            habitCheckins: Object.fromEntries(payload.habits.map(habit => [habit.id, { outcome: "", urges: "0", intensity: "", trigger: "", emotion: "", response: "", whatHelped: "", lesson: "", tomorrow: "" }])),
+          });
         }
       } else {
         const next = { ...current, window: payload.window, inPlan: payload.inPlan, fixedPlan: payload.fixedPlan, day: payload.day };
@@ -138,7 +147,7 @@ export default function ReviewPage({ onNavigate }: { onNavigate: (tab: string) =
     finally { setSaving(false); }
   }
 
-  const nav = ["Dashboard", "Aaj", "Review", "Goals", "Not To Do", "Plan a Day", "Past Status", "Graphs", "Search", "Reminders"];
+  const nav = ["Dashboard", "Aaj", "Review", "Goals", "Not To Do", "Plan a Day", "Past Status", "Graphs"];
   if (loading) return <ReviewFrame nav={nav} onNavigate={onNavigate}><div className="review-loading"><i /><span>Server time check ho raha hai…</span></div></ReviewFrame>;
   if (!result?.inPlan) return <ReviewFrame nav={nav} onNavigate={onNavigate}><div className="review-locked"><div className="locked-moon">☾</div><p className="eyebrow">RAAT KA REVIEW</p><h1>Is waqt review<br />available nahi.</h1><p>Review date valid nahi mili. Dashboard se dobara try karo.</p><button onClick={() => onNavigate("Dashboard")}>Dashboard par wapas <span>→</span></button></div></ReviewFrame>;
   if (complete) {
@@ -156,6 +165,29 @@ export default function ReviewPage({ onNavigate }: { onNavigate: (tab: string) =
     <div className="review-progress-head"><span>SECTION {String(step + 1).padStart(2, "0")} <i>/</i> {String(sections.length).padStart(2, "0")}</span><div><i style={{ width: `${(step + 1) / sections.length * 100}%` }} /></div><span>{Math.round((step + 1) / sections.length * 100)}%</span></div>
     <section className="review-section-card"><div className="review-card-heading"><span className="section-number">{String(step + 1).padStart(2, "0")}</span><div><h2>{section.title}</h2><p>{section.subtitle}</p></div></div>
       {section.kind === "prayers" && <div className="prayer-review-list">{prayerNames.map(name => { const related = blocks.find(block => block.prayer === name); const checked = prayerAnswers[name]; return <div className="prayer-review-row" key={name}><span className="prayer-dot">✧</span><div><b>{name}</b><small>{related ? `${related.start} · linked schedule block` : "Daily prayer check-in"}</small></div><button className={checked === true ? "prayer-choice yes active" : "prayer-choice yes"} onClick={() => update("prayers", { ...prayerAnswers, [name]: true })}>✓ Done</button><button className={checked === false ? "prayer-choice no active" : "prayer-choice no"} onClick={() => update("prayers", { ...prayerAnswers, [name]: false })}>× Not done</button></div>; })}{result.fixedPlan && <><div className="schedule-pulled"><span>{lectureBlock?.status === "done" ? "✓" : lectureBlock?.status === "missed" ? "×" : "◷"}</span><div><b>Nightly lecture · schedule se linked</b><p>Status: <strong>{lectureBlock?.status === "done" ? "Done" : lectureBlock?.status === "missed" ? "Not done" : "Abhi pending"}</strong></p></div></div><p className="review-required-note">Paanch namazon ka status select karna zaroori hai. Linked namaz entries schedule ke saath update hongi.</p></>}</div>}
+      {section.kind === "goals" && <div className="review-daily-entries">{result.goals.length ? result.goals.map(goal => {
+        const entries = (answers.goalCheckins ?? {}) as Record<string, Record<string, unknown>>;
+        const entry = entries[goal.id] ?? {};
+        const change = (key: string, value: unknown) => update("goalCheckins", { ...entries, [goal.id]: { ...entry, [key]: value } });
+        return <article className="review-entry-card" key={goal.id}><h3>{goal.title}</h3>{goal.dailyTarget && <p>Today&apos;s target: {goal.dailyTarget}</p>}<div className="review-fields">
+          <label className="review-field"><span>Worked on this goal?</span><select value={entry.worked === true ? "yes" : entry.worked === false ? "no" : ""} onChange={event => change("worked", event.target.value === "" ? null : event.target.value === "yes")}><option value="">Not recorded</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+          <label className="review-field"><span>Hours invested</span><input type="number" min="0" max="24" step="0.25" value={String(entry.hours ?? "")} onChange={event => change("hours", event.target.value)}/></label>
+          <label className="review-field"><span>Measurable output {goal.targetUnit ? `(${goal.targetUnit})` : ""}</span><input type="number" min="0" value={String(entry.outputValue ?? "")} onChange={event => change("outputValue", event.target.value)}/></label>
+          <label className="review-field"><span>Today&apos;s target</span><select value={String(entry.targetMet ?? "")} onChange={event => change("targetMet", event.target.value === "" ? null : event.target.value === "yes")}><option value="">Not set / not recorded</option><option value="yes">Met</option><option value="no">Not met</option></select></label>
+          {([["tasks","Tasks completed"],["accomplished","Measurable progress"],["difficulties","Difficulties faced"],["lesson","What I learned"],["tomorrow","Tomorrow's target"]] as const).map(([key,label])=><label className="review-field" key={key}><span>{label}</span><input value={String(entry[key] ?? "")} onChange={event => change(key,event.target.value)}/></label>)}
+        </div></article>;
+      }) : <p className="life-empty">No active goals to review today.</p>}</div>}
+      {section.kind === "habits" && <div className="review-daily-entries">{result.habits.length ? result.habits.map(habit => {
+        const entries = (answers.habitCheckins ?? {}) as Record<string, Record<string, unknown>>;
+        const entry = entries[habit.id] ?? {};
+        const change = (key: string, value: unknown) => update("habitCheckins", { ...entries, [habit.id]: { ...entry, [key]: value } });
+        return <article className="review-entry-card" key={habit.id}><h3>{habit.title}</h3><div className="review-fields">
+          <label className="review-field"><span>Today&apos;s outcome</span><select value={String(entry.outcome ?? "")} onChange={event => change("outcome",event.target.value)}><option value="">Not recorded</option><option value="avoided">Successfully avoided</option><option value="urge_resisted">Urge, resisted</option><option value="slip">Slip</option><option value="not_applicable">Not applicable</option></select></label>
+          <label className="review-field"><span>Urges experienced</span><input type="number" min="0" value={String(entry.urges ?? "0")} onChange={event => change("urges",event.target.value)}/></label>
+          <label className="review-field"><span>Strongest urge (1–10)</span><input type="number" min="1" max="10" value={String(entry.intensity ?? "")} onChange={event => change("intensity",event.target.value)}/></label>
+          {([["trigger","What triggered it?"],["emotion","Emotional state"],["response","How did you respond?"],["whatHelped","What helped?"],["lesson","What did you learn?"],["tomorrow","Tomorrow I will…"]] as const).map(([key,label])=><label className="review-field" key={key}><span>{label}</span><input value={String(entry[key] ?? "")} onChange={event => change(key,event.target.value)}/></label>)}
+        </div></article>;
+      }) : <p className="life-empty">No active Not To Do rules to review today.</p>}</div>}
       {section.kind === "activity" && <div className="schedule-pulled"><span>◷</span><div><b>Schedule se aaya</b><p>Dr Nauman Ali Khan lecture: <strong>{lectureBlock?.status === "done" ? "Done" : lectureBlock?.status === "missed" ? "Not done" : "Abhi pending"}</strong></p></div></div>}
       {section.fields && <div className={`review-fields ${step === 3 || step === 8 ? "wide-fields" : ""}`}>{section.fields.map(field => {
         const value = answers[field.key];
@@ -172,5 +204,5 @@ export default function ReviewPage({ onNavigate }: { onNavigate: (tab: string) =
 }
 
 function ReviewFrame({ children, nav, onNavigate }: { children: React.ReactNode; nav: string[]; onNavigate: (tab: string) => void }) {
-  return <main className="review-app"><header className="dash-top"><div className="dash-brand">✦ <b>command<span>center</span></b></div><nav>{nav.map((tab, i) => <button key={tab} className={tab === "Review" ? "selected" : ""} onClick={() => onNavigate(tab)}><span>{["◫", "◷", "☾", "◎", "↘", "▤", "▦", "⌁", "⌕", "◷"][i]}</span>{tab}</button>)}</nav><div className="dash-user"><span className="avatar">M</span><span><b>Mustafa</b><small>KARACHI · PKT</small></span></div></header><div className="review-body">{children}</div></main>;
+  return <main className="review-app"><header className="dash-top"><div className="dash-brand">✦ <b>command<span>center</span></b></div><nav>{nav.map((tab, i) => <button key={tab} className={tab === "Review" ? "selected" : ""} onClick={() => onNavigate(tab)}><span>{["◫", "◷", "☾", "◎", "↘", "▤", "▦", "⌁"][i]}</span>{tab}</button>)}</nav><div className="dash-user"><span className="avatar">M</span><span><b>Mustafa</b><small>KARACHI · PKT</small></span></div></header><div className="review-body">{children}</div></main>;
 }

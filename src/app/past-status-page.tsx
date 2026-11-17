@@ -6,6 +6,7 @@ import LifeFrame from "@/app/life-frame";
 type Day = { date: string; actualRecorded: boolean; scheduled: number; done: number; missed: number; partial: number; completion: number | null; score: number | null; reviewComplete: boolean; goalCheckins: number; habitCheckins: number };
 type Detail = { date: string; activities: { id?: string; title?: string; name?: string; start_time?: string | null; end_time?: string | null; start?: string; end?: string; category: string; status: string; reason?: string | null }[]; scores: Record<string, number> | null; review: { answers: Record<string, unknown>; submitted_at: string | null } | null; goals: { title: string; hours: number; output_value: number | null }[]; habits: { title: string; outcome: string; urges: number }[] };
 type Payload = { month: string; startDate: string; leading: number; days: Day[]; selected?: Detail };
+type ComparisonPeriod = { from: string; to: string; trackedBlocks: number; completion: number | null; submittedReviews: number; averageScores: Record<string, number | null>; goalCheckins: number; goalHours: number; habitCheckins: number; habitConsistency: number | null };
 const localMonth = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit" }).format(new Date()).slice(0, 7);
 const monthLabel = (month: string) => new Intl.DateTimeFormat("en", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
 
@@ -15,6 +16,10 @@ export default function PastStatusPage({ onNavigate }: { onNavigate: (tab: strin
   const [payload, setPayload] = useState<Payload | null>(null);
   const [category, setCategory] = useState("All categories");
   const [error, setError] = useState("");
+  const [comparisonDates, setComparisonDates] = useState({ fromA: "", toA: "", fromB: "", toB: "" });
+  const [comparison, setComparison] = useState<ComparisonPeriod[] | null>(null);
+  const [comparisonError, setComparisonError] = useState("");
+  const [comparing, setComparing] = useState(false);
 
   const load = useCallback(async (date = "") => {
     try {
@@ -41,6 +46,16 @@ export default function PastStatusPage({ onNavigate }: { onNavigate: (tab: strin
     const next = new Date(Date.UTC(year,value-1+amount,1));
     setMonth(`${next.getUTCFullYear()}-${String(next.getUTCMonth()+1).padStart(2,"0")}`);
   }
+  async function comparePeriods() {
+    setComparing(true); setComparisonError(""); setComparison(null);
+    try {
+      const response = await fetch(`/api/analytics/compare?${new URLSearchParams(comparisonDates)}`, { cache: "no-store" });
+      const result = await response.json() as { periods?: ComparisonPeriod[]; error?: string };
+      if (!response.ok || !result.periods) throw new Error(result.error ?? "Comparison could not be loaded.");
+      setComparison(result.periods);
+    } catch (cause) { setComparisonError(cause instanceof Error ? cause.message : "Comparison could not be loaded."); }
+    finally { setComparing(false); }
+  }
   const weekdays = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
   return <LifeFrame active="Past Status" onNavigate={onNavigate}>
@@ -49,6 +64,7 @@ export default function PastStatusPage({ onNavigate }: { onNavigate: (tab: strin
       {error&&<p className="life-error" role="alert">{error}</p>}
       <div className="past-status-layout"><section className="calendar-panel"><div className="calendar-weekdays">{weekdays.map(day=><span key={day}>{day}</span>)}</div><div className="calendar-grid">{Array.from({length:payload?.leading??0},(_,index)=><span className="calendar-blank" key={`blank-${index}`}/>)}{payload?.days.map(day=><button key={day.date} className={`calendar-day ${day.actualRecorded?"recorded":"no-record"} ${day.completion===null?"":day.completion>=80?"excellent":day.completion>=50?"good":"poor"} ${selectedDate===day.date?"selected":""}`} onClick={()=>setSelectedDate(day.date)} title={`${day.date} · ${day.actualRecorded?`${day.completion??0}% completion`:"No recorded activity"}`}><b>{Number(day.date.slice(-2))}</b>{day.actualRecorded&&<small>{day.completion===null?"·":`${day.completion}%`}</small>}{day.score!==null&&<i>{day.score}</i>}</button>)}</div><div className="calendar-legend"><span><i className="excellent"/>Excellent</span><span><i className="good"/>Good</span><span><i className="poor"/>Needs care</span><span><i className="no-record"/>No data</span></div><p className="calendar-start">Tracking history begins: {payload?.startDate??"Loading…"}. Earlier dates are not treated as records.</p></section>
         <aside className="history-detail"><h2>{selectedDate||"Choose a date"}</h2>{!selectedDate?<p>Select any calendar day to view its record. Days without entries remain explicitly marked as no data.</p>:!payload?.selected?<p>Loading day details…</p>:<><div className="history-score-grid">{["overall","business","health","mental","focus","religious"].map(key=><span key={key}>{key}<b>{payload.selected?.scores?.[key]??"—"}</b></span>)}</div><p>Schedule: {shownActivities.filter(item=>item.status==="done"||item.status==="completed").length} complete · {shownActivities.filter(item=>item.status==="missed").length} missed</p><label className="history-filter">Category<select value={category} onChange={event=>setCategory(event.target.value)}>{categories.map(item=><option key={item}>{item}</option>)}</select></label><div className="history-timeline">{shownActivities.map((activity,index)=><article key={activity.id??index}><small>{activity.start_time??activity.start??"—"} – {activity.end_time??activity.end??"—"} · {activity.category}</small><b>{activity.title??activity.name}</b><span>{activity.status}{activity.reason?` · ${activity.reason}`:""}</span></article>)}</div>{payload.selected?.goals.length>0&&<><h3>Goal execution</h3>{payload.selected.goals.map((goal,index)=><p key={index}>{goal.title} · {goal.hours}h{goal.output_value!==null?` · output ${goal.output_value}`:""}</p>)}</>}{payload.selected?.habits.length>0&&<><h3>Private Not To Do entries</h3>{payload.selected.habits.map((habit,index)=><p key={index}>{habit.title} · {habit.outcome} · urges {habit.urges}</p>)}</>}{payload.selected?.review&&<details><summary>Nightly review {payload.selected.review.submitted_at?"submitted":"draft"}</summary><pre>{JSON.stringify(payload.selected.review.answers,null,2)}</pre></details>}</>}</aside></div>
+      <section className="calendar-panel history-comparison"><h2>Compare periods</h2><p>Compare two date ranges using recorded data only.</p><div className="comparison-date-grid">{([["fromA","Period A start"],["toA","Period A end"],["fromB","Period B start"],["toB","Period B end"]] as const).map(([key,label])=><label key={key}>{label}<input type="date" value={comparisonDates[key]} onChange={event=>setComparisonDates(current=>({...current,[key]:event.target.value}))}/></label>)}</div><button className="life-primary" onClick={()=>void comparePeriods()} disabled={comparing||Object.values(comparisonDates).some(value=>!value)}>{comparing?"Comparing…":"Compare periods"}</button>{comparisonError&&<p className="life-error" role="alert">{comparisonError}</p>}{comparison&&<div className="history-comparison-results"><p>Period A: {comparison[0].from} to {comparison[0].to} · Period B: {comparison[1].from} to {comparison[1].to}</p>{([["Schedule completion","completion","%"],["Overall score","score","/ 100"],["Goal hours","goalHours","h"],["Goal check-ins","goalCheckins",""],["Not To Do consistency","habitConsistency","%"],["Reviews submitted","submittedReviews",""]] as const).map(([label,key,suffix])=>{const value=(period:ComparisonPeriod)=>key==="score"?period.averageScores.overall:period[key as keyof ComparisonPeriod];const format=(v:unknown)=>v===null||v===undefined?"No data":`${v}${suffix}`;return <p key={key}><b>{label}:</b> {format(value(comparison[0]))} · {format(value(comparison[1]))}</p>;})}</div>}</section>
     </section>
   </LifeFrame>;
 }

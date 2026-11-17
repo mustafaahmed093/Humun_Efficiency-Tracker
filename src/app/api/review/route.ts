@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { query, transaction } from "@/lib/db";
 import { getSchedule, planEnd, planStart } from "@/lib/schedule";
 import { getReviewWindow } from "@/lib/review-time";
@@ -71,9 +72,17 @@ export async function GET(request: NextRequest) {
     : (await query<{ status: string; end_time: string | null }>("SELECT status,end_time FROM daily_activities WHERE plan_date=$1", [day])).rows
       .filter(activity => ["planned", "rescheduled"].includes(activity.status) && activity.end_time && isDue({ end: activity.end_time }, elapsedPlanMinutes())).length;
   const savedScores = (await query<{ scores_json: string }>("SELECT scores_json FROM daily_scores WHERE plan_day=$1", [day])).rows[0];
+  const [goals, habits] = await Promise.all([
+    query<{ id: string; title: string; target_unit: string | null; data_json: string }>("SELECT id,title,target_unit,data_json FROM goals WHERE archived_at IS NULL AND status NOT IN ('paused','completed','cancelled') ORDER BY is_primary DESC,updated_at DESC"),
+    query<{ id: string; title: string }>("SELECT id,title FROM not_to_do_rules WHERE archived_at IS NULL AND active=1 ORDER BY created_at"),
+  ]);
   const countable = blocks.filter(block => block.category !== "Review");
   const completion = countable.length ? Math.round(countable.filter(block => block.status === "done").length / countable.length * 100) : 0;
-  return NextResponse.json({ window, day, inPlan: true, fixedPlan: day >= planStart && day <= planEnd, blocks, pending, review: row ? { answers, submittedAt: row.submitted_at, lateEntry: Boolean(row.late_entry), draftUpdatedAt: row.draft_updated_at } : null, summary: row?.submitted_at && savedScores ? { scores: JSON.parse(savedScores.scores_json), completion } : null });
+  return NextResponse.json({ window, day, inPlan: true, fixedPlan: day >= planStart && day <= planEnd, blocks, pending,
+    goals: goals.rows.map(goal => ({ id: goal.id, title: goal.title, targetUnit: goal.target_unit, dailyTarget: (JSON.parse(goal.data_json) as Record<string, string>).dailyTarget ?? null })),
+    habits: habits.rows,
+    review: row ? { answers, submittedAt: row.submitted_at, lateEntry: Boolean(row.late_entry), draftUpdatedAt: row.draft_updated_at } : null,
+    summary: row?.submitted_at && savedScores ? { scores: JSON.parse(savedScores.scores_json), completion } : null });
 }
 
 export async function POST(request: NextRequest) {
@@ -125,6 +134,59 @@ export async function POST(request: NextRequest) {
         .filter(activity => ["planned", "rescheduled"].includes(activity.status) && activity.end_time && isDue({ end: activity.end_time }, elapsedPlanMinutes()));
     if (pending.length) {
       throw new Error("PENDING:" + pending.length);
+    }
+    const goalCheckins = answers.goalCheckins && typeof answers.goalCheckins === "object" ? answers.goalCheckins as Record<string, unknown> : {};
+    for (const [goalId, raw] of Object.entries(goalCheckins)) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      const checkin = raw as Record<string, unknown>;
+      if (typeof checkin.worked !== "boolean") continue;
+      const hours = checkin.hours === undefined || checkin.hours === "" ? 0 : Number(checkin.hours);
+      const outputValue = checkin.outputValue === undefined || checkin.outputValue === "" || checkin.outputValue === null ? null : Number(checkin.outputValue);
+      if (!Number.isFinite(hours) || hours < 0 || hours > 24 || (outputValue !== null && (!Number.isFinite(outputValue) || outputValue < 0))) continue;
+      const goal = (await client.query<{ current_value: number }>("SELECT current_value FROM goals WHERE id=$1 AND archived_at IS NULL AND status NOT IN ('paused','completed','cancelled')", [goalId])).rows[0];
+      if (!goal) continue;
+      const existingCheckin = (await client.query<{ id: string; worked: number; hours: number; output_value: number | null; target_met: number | null; data_json: string }>("SELECT id,worked,hours,output_value,target_met,data_json FROM goal_checkins WHERE goal_id=$1 AND checkin_date=$2", [goalId, body.day])).rows[0];
+      if (existingCheckin) await client.query("INSERT INTO goal_checkin_history (id,checkin_id,previous_json,changed_at) VALUES ($1,$2,$3,$4)", [randomUUID(), existingCheckin.id, JSON.stringify(existingCheckin), timestamp]);
+      if ((existingCheckin?.output_value ?? null) !== outputValue && (existingCheckin?.output_value !== null && existingCheckin?.output_value !== undefined || outputValue !== null)) {
+        await client.query("UPDATE goals SET current_value=$1,updated_at=$2 WHERE id=$3", [Math.max(0, Number(goal.current_value) - Number(existingCheckin?.output_value ?? 0) + Number(outputValue ?? 0)), timestamp, goalId]);
+      }
+      const previousData = existingCheckin ? JSON.parse(existingCheckin.data_json) as Record<string, unknown> : {};
+      const plannerHours = Number(previousData.plannerHours ?? 0);
+      const savedData = {
+        ...previousData,
+        manualOverride: true,
+        manualHours: hours,
+        plannerOnly: false,
+        source: "nightly-review",
+        tasks: String(checkin.tasks ?? ""),
+        accomplished: String(checkin.accomplished ?? ""),
+        difficulties: String(checkin.difficulties ?? ""),
+        lesson: String(checkin.lesson ?? ""),
+        tomorrow: String(checkin.tomorrow ?? ""),
+      };
+      const targetMet = checkin.targetMet === true ? 1 : checkin.targetMet === false ? 0 : null;
+      await client.query(`INSERT INTO goal_checkins (id,goal_id,checkin_date,worked,hours,output_value,target_met,data_json,created_at,updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)
+        ON CONFLICT(goal_id,checkin_date) DO UPDATE SET worked=excluded.worked,hours=excluded.hours,output_value=excluded.output_value,target_met=excluded.target_met,data_json=excluded.data_json,updated_at=excluded.updated_at`,
+      [existingCheckin?.id ?? randomUUID(), goalId, body.day, checkin.worked ? 1 : 0, hours, outputValue, targetMet, JSON.stringify({ ...savedData, plannerHours }), timestamp]);
+    }
+    const habitCheckins = answers.habitCheckins && typeof answers.habitCheckins === "object" ? answers.habitCheckins as Record<string, unknown> : {};
+    for (const [ruleId, raw] of Object.entries(habitCheckins)) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      const checkin = raw as Record<string, unknown>;
+      if (!["avoided", "urge_resisted", "slip", "not_applicable"].includes(String(checkin.outcome))) continue;
+      const rule = (await client.query<{ id: string }>("SELECT id FROM not_to_do_rules WHERE id=$1 AND archived_at IS NULL AND active=1", [ruleId])).rows[0];
+      if (!rule) continue;
+      const urges = Math.max(0, Math.min(1000, Math.round(Number(checkin.urges) || 0)));
+      const intensityValue = Number(checkin.intensity);
+      const intensity = Number.isInteger(intensityValue) && intensityValue >= 1 && intensityValue <= 10 ? intensityValue : null;
+      const existingCheckin = (await client.query<{ id: string; outcome: string; urges: number; intensity: number | null; data_json: string }>("SELECT id,outcome,urges,intensity,data_json FROM not_to_do_checkins WHERE rule_id=$1 AND checkin_date=$2", [ruleId, body.day])).rows[0];
+      if (existingCheckin) await client.query("INSERT INTO not_to_do_checkin_history (id,checkin_id,previous_json,changed_at) VALUES ($1,$2,$3,$4)", [randomUUID(), existingCheckin.id, JSON.stringify(existingCheckin), timestamp]);
+      const habitData = { trigger: String(checkin.trigger ?? ""), emotion: String(checkin.emotion ?? ""), response: String(checkin.response ?? ""), whatHelped: String(checkin.whatHelped ?? ""), lesson: String(checkin.lesson ?? ""), tomorrow: String(checkin.tomorrow ?? ""), source: "nightly-review" };
+      await client.query(`INSERT INTO not_to_do_checkins (id,rule_id,checkin_date,outcome,urges,intensity,data_json,created_at,updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)
+        ON CONFLICT(rule_id,checkin_date) DO UPDATE SET outcome=excluded.outcome,urges=excluded.urges,intensity=excluded.intensity,data_json=excluded.data_json,updated_at=excluded.updated_at`,
+      [existingCheckin?.id ?? randomUUID(), ruleId, body.day, checkin.outcome, urges, intensity, JSON.stringify(habitData), timestamp]);
     }
     const scoreBlocks = fixedPlan
       ? (await client.query<BlockRow>(`SELECT s.id,s.start_time as start,s.end_time as end,s.name,s.category,s.prayer,l.status,l.reason FROM schedule_blocks s LEFT JOIN block_logs l ON l.block_id=s.id WHERE s.plan_day=$1 ORDER BY s.start_time`, [body.day])).rows

@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { query } from "@/lib/db";
-import { getPlanDays, getSchedule, planEnd, planStart } from "@/lib/schedule";
+import { getPlanDays, getSchedule } from "@/lib/schedule";
 import { effectiveServerNow } from "@/lib/server-time";
 import { isUnlocked } from "@/lib/auth";
+import { redactPrivateReviewAnswers } from "@/lib/life-system";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 type LogRow = { block_id: string; plan_day: string; status: string; reason: string | null; updated_at: string };
 type ReviewRow = { plan_day: string; answers_json: string; safety_count: number; draft_updated_at: string; submitted_at: string | null; late_entry: number };
 type ScoreRow = { plan_day: string; scores_json: string; created_at: string };
-const mentalFields = new Set(["mood", "stress", "stressNote", "tension", "happiness", "overthinkingCount", "focusRating"]);
 
 function validRange(from: string, to: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to;
@@ -23,12 +23,20 @@ function eventDate(day: string, time: string) {
   return `${normalizedDay}T${String(Math.floor(minute / 60)).padStart(2, "0")}${String(minute % 60).padStart(2, "0")}00`;
 }
 
-function makeCalendar(now: Date) {
+async function makeCalendar(now: Date, from: string, to: string) {
   const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Command Center//15 Day Plan//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "BEGIN:VTIMEZONE", "TZID:Asia/Karachi", "BEGIN:STANDARD", "DTSTART:19700101T000000", "TZOFFSETFROM:+0500", "TZOFFSETTO:+0500", "TZNAME:PKT", "END:STANDARD", "END:VTIMEZONE"];
-  for (const day of getPlanDays()) {
-    for (const block of getSchedule(day)) {
-      lines.push("BEGIN:VEVENT", `UID:${block.id}@command-center.local`, `DTSTAMP:${stamp}`, `DTSTART;TZID=Asia/Karachi:${eventDate(day, block.start)}`, `DTEND;TZID=Asia/Karachi:${eventDate(day, block.end)}`, `SUMMARY:${escapeIcs(block.name)}`, `CATEGORIES:${escapeIcs(block.category)}`, "BEGIN:VALARM", "TRIGGER:PT0M", "ACTION:DISPLAY", `DESCRIPTION:${escapeIcs(block.name)}`, "END:VALARM", "END:VEVENT");
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Command Center//Daily Plan//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "BEGIN:VTIMEZONE", "TZID:Asia/Karachi", "BEGIN:STANDARD", "DTSTART:19700101T000000", "TZOFFSETFROM:+0500", "TZOFFSETTO:+0500", "TZNAME:PKT", "END:STANDARD", "END:VTIMEZONE"];
+  const records = (await query<{ id: string; plan_date: string; title: string; start_time: string | null; end_time: string | null; category: string; status: string }>(
+    "SELECT id,plan_date,title,start_time,end_time,category,status FROM daily_activities WHERE plan_date BETWEEN $1 AND $2 AND status<>'cancelled' ORDER BY plan_date,position,start_time", [from, to])).rows;
+  const recordsByDate = new Map<string, typeof records>();
+  for (const record of records) recordsByDate.set(record.plan_date, [...(recordsByDate.get(record.plan_date) ?? []), record]);
+  const start = Date.parse(`${from}T00:00:00Z`); const end = Date.parse(`${to}T00:00:00Z`);
+  for (let dayTime=start;dayTime<=end;dayTime+=86_400_000) {
+    const day = new Date(dayTime).toISOString().slice(0,10);
+    const activities = recordsByDate.get(day);
+    const blocks = activities?.length ? activities.filter(item=>item.start_time&&item.end_time).map(item=>({id:item.id,name:item.title,category:item.category,start:item.start_time!,end:item.end_time!})) : getPlanDays().includes(day) ? getSchedule(day) : [];
+    for (const block of blocks) {
+      lines.push("BEGIN:VEVENT", `UID:${block.id}-${day}@command-center.local`, `DTSTAMP:${stamp}`, `DTSTART;TZID=Asia/Karachi:${eventDate(day, block.start)}`, `DTEND;TZID=Asia/Karachi:${eventDate(day, block.end)}`, `SUMMARY:${escapeIcs(block.name)}`, `CATEGORIES:${escapeIcs(block.category)}`, "BEGIN:VALARM", "TRIGGER:PT0M", "ACTION:DISPLAY", `DESCRIPTION:${escapeIcs(block.name)}`, "END:VALARM", "END:VEVENT");
     }
   }
   lines.push("END:VCALENDAR");
@@ -46,7 +54,7 @@ export async function collect(from: string, to: string, includeSensitive: boolea
   const reviewRows = (await query<ReviewRow>("SELECT plan_day,answers_json,safety_count,draft_updated_at,submitted_at,late_entry FROM nightly_reviews WHERE plan_day BETWEEN $1 AND $2 ORDER BY plan_day", [from, to])).rows;
   const reviews = reviewRows.map(row => {
     const answers = JSON.parse(row.answers_json) as Record<string, unknown>;
-    const filtered = includeSensitive ? answers : Object.fromEntries(Object.entries(answers).filter(([key]) => !mentalFields.has(key)));
+    const filtered = includeSensitive ? answers : redactPrivateReviewAnswers(answers);
     return { plan_day: row.plan_day, answers: filtered, safety_count: includeSensitive ? row.safety_count : undefined, draft_updated_at: row.draft_updated_at, submitted_at: row.submitted_at, late_entry: Boolean(row.late_entry) };
   });
   const scoreRows = (await query<ScoreRow>("SELECT plan_day,scores_json,created_at FROM daily_scores WHERE plan_day BETWEEN $1 AND $2 ORDER BY plan_day", [from, to])).rows;
@@ -76,7 +84,7 @@ export async function collect(from: string, to: string, includeSensitive: boolea
     return { plan_day: day, done: complete, logged, scheduled: countable.length, completion_pct: countable.length ? Math.round(complete / countable.length * 100) : 0 };
   });
   const [goalRows, milestoneRows, goalCheckins, goalCheckinHistory, weeklyReviews, deadlineHistory, dependencies,
-    ruleRows, habitCheckins, habitCheckinHistory, dailyPlans, activities, templateRows, templateActivities, reminders] = await Promise.all([
+    ruleRows, habitCheckins, habitCheckinHistory, dailyPlans, activities, templateRows, templateActivities, reminders, plannerRecurrences] = await Promise.all([
     query("SELECT * FROM goals"),
     query("SELECT * FROM goal_milestones"),
     query("SELECT * FROM goal_checkins"),
@@ -92,6 +100,7 @@ export async function collect(from: string, to: string, includeSensitive: boolea
     query("SELECT * FROM daily_templates"),
     query("SELECT * FROM daily_template_activities"),
     query("SELECT * FROM daily_reminders"),
+    query("SELECT * FROM planner_recurrences"),
   ]);
   return {
     formatVersion: 2, range: { from, to }, days, scheduleLog, reviews, dailyScores, goals, prayers, crossedReasons, completion,
@@ -102,6 +111,7 @@ export async function collect(from: string, to: string, includeSensitive: boolea
       notToDoRules: includeSensitive ? ruleRows.rows : [], habitCheckins: habitCheckins.rows,
       habitCheckinHistory: habitCheckinHistory.rows, dailyPlans: dailyPlans.rows, activities: activities.rows,
       templates: templateRows.rows, templateActivities: templateActivities.rows, reminders: reminders.rows,
+      plannerRecurrences: plannerRecurrences.rows,
       privateHabitDataIncluded: includeSensitive,
     },
   };
@@ -113,11 +123,13 @@ export async function GET(request: NextRequest) {
   if (!isUnlocked(request)) return NextResponse.json({ error: "Unlock the local app first." }, { status: 401 });
   const query = request.nextUrl.searchParams;
   const format = query.get("format") ?? "json";
-  const from = query.get("from") ?? planStart;
-  const to = query.get("to") ?? planEnd;
-  if (!validRange(from, to) || from < planStart || to > planEnd) return NextResponse.json({ error: "Export date range is outside the plan." }, { status: 400 });
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).format(effectiveServerNow());
+  const from = query.get("from") ?? (format === "ics" ? today : "2000-01-01");
+  const to = query.get("to") ?? (format === "ics" ? new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10) : today);
+  if (!validRange(from, to) || from < "2000-01-01" || to > "2200-12-31") return NextResponse.json({ error: "Export date range is invalid." }, { status: 400 });
   if (format === "ics") {
-    return new NextResponse(makeCalendar(effectiveServerNow()), { headers: { "Content-Type": "text/calendar; charset=utf-8", "Content-Disposition": "attachment; filename=command-center-15-day-plan.ics", "Cache-Control": "no-store" } });
+    if (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`) > 366 * 86_400_000) return NextResponse.json({ error: "Calendar exports are limited to 367 days at a time." }, { status: 400 });
+    return new NextResponse(await makeCalendar(effectiveServerNow(), from, to), { headers: { "Content-Type": "text/calendar; charset=utf-8", "Content-Disposition": `attachment; filename=command-center-${from}-to-${to}.ics`, "Cache-Control": "no-store" } });
   }
   const data = await collect(from, to, query.get("includeSensitive") === "1");
   if (format === "json") return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });

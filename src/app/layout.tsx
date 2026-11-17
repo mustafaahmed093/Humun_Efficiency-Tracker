@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import PwaRegister from "./pwa-register";
 import "./globals.css";
+import "./feature-refresh.css";
 
 export const metadata: Metadata = {
   title: "Command Center — Mustafa’s 15-Day Reset",

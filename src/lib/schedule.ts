@@ -19,6 +19,12 @@ export function planDayForDate(date: Date): string {
   return day < planStart ? planStart : day > planEnd ? planEnd : day;
 }
 
+export function karachiCalendarDate(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const part = (type: string) => parts.find(item => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
 export function getSchedule(day: string): ScheduleBlock[] {
   const [year, month, date] = day.split("-").map(Number);
   const weekday = new Date(Date.UTC(year, month - 1, date)).getUTCDay();

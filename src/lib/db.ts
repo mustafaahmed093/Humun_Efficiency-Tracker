@@ -85,6 +85,11 @@ const v2Schema = `
     actual_duration REAL, data_json TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS planner_recurrences (
+    id TEXT PRIMARY KEY, start_date TEXT NOT NULL, end_date TEXT,
+    rule_json TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS daily_templates (
     id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT,
     data_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
@@ -92,6 +97,8 @@ const v2Schema = `
   CREATE TABLE IF NOT EXISTS daily_template_activities (
     id TEXT PRIMARY KEY, template_id TEXT NOT NULL REFERENCES daily_templates(id) ON DELETE CASCADE,
     title TEXT NOT NULL, start_time TEXT, end_time TEXT, category TEXT NOT NULL,
+    goal_id TEXT REFERENCES goals(id) ON DELETE SET NULL,
+    milestone_id TEXT REFERENCES goal_milestones(id) ON DELETE SET NULL,
     priority TEXT NOT NULL DEFAULT 'medium', data_json TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0
   );
@@ -166,6 +173,9 @@ function initializeSqlite() {
     INSERT INTO settings (key,value) VALUES ('late_entry_enabled','false') ON CONFLICT(key) DO NOTHING;
   `);
   database.exec(v2Schema);
+  const templateColumns = database.prepare("PRAGMA table_info(daily_template_activities)").all() as { name: string }[];
+  if (!templateColumns.some(column => column.name === "goal_id")) database.exec("ALTER TABLE daily_template_activities ADD COLUMN goal_id TEXT REFERENCES goals(id) ON DELETE SET NULL");
+  if (!templateColumns.some(column => column.name === "milestone_id")) database.exec("ALTER TABLE daily_template_activities ADD COLUMN milestone_id TEXT REFERENCES goal_milestones(id) ON DELETE SET NULL");
   const insertBlock = database.prepare(`INSERT INTO schedule_blocks (id,plan_day,start_time,end_time,name,category,prayer)
     VALUES (?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(id) DO NOTHING`);
   for (const day of getPlanDays()) {
@@ -194,6 +204,8 @@ export async function ready() {
         INSERT INTO settings (key,value) VALUES ('late_entry_enabled','false') ON CONFLICT(key) DO NOTHING;
       `);
       await pool.query(v2Schema);
+      await pool.query(`ALTER TABLE daily_template_activities ADD COLUMN IF NOT EXISTS goal_id TEXT REFERENCES goals(id) ON DELETE SET NULL;
+        ALTER TABLE daily_template_activities ADD COLUMN IF NOT EXISTS milestone_id TEXT REFERENCES goal_milestones(id) ON DELETE SET NULL;`);
       await pool.query(`ALTER TABLE schedule_blocks ENABLE ROW LEVEL SECURITY;
         ALTER TABLE block_logs ENABLE ROW LEVEL SECURITY;
         ALTER TABLE settings ENABLE ROW LEVEL SECURITY;

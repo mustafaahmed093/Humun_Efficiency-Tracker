@@ -2,6 +2,11 @@ export type GoalStatus = "not_started" | "active" | "on_track" | "at_risk" | "be
 export type HabitOutcome = "avoided" | "urge_resisted" | "slip" | "not_applicable";
 export type TimedBlock = { id: string; start_time: string | null; end_time: string | null };
 
+const privateReviewFields = new Set(["mood", "stress", "stressNote", "tension", "happiness", "overthinkingCount", "focusRating", "safetyCheck", "habitCheckins"]);
+export function redactPrivateReviewAnswers(answers: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(answers).filter(([key]) => !privateReviewFields.has(key)));
+}
+
 function dayNumber(day: string) {
   const timestamp = Date.parse(`${day}T00:00:00Z`);
   return Number.isNaN(timestamp) ? null : Math.floor(timestamp / 86_400_000);
